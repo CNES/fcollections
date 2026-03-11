@@ -51,7 +51,7 @@ jobs:
       - name: Run unit tests
         shell: bash -el {0}
         run: |
-          pytest tests --cov=src --cov-report=xml:coverage-ut.xml --cov-report=term
+          pytest tests --cov=src/fcollections --cov-report=xml:coverage-ut.xml --cov-report=term
           mv .coverage .coverage-ut
       - name: Upload unit test coverage artifacts
         uses: actions/upload-artifact@v4
@@ -104,7 +104,7 @@ jobs:
       - name: Run unit tests without geo
         shell: bash -el {0}
         run: |
-          pytest tests/implementations/collections --ignore tests/implementations/collections/test_area_selector.py --without-geo-packages --cov=src --cov-report=xml:coverage-ut-nogeo.xml --cov-report=term
+          pytest tests/implementations/collections --ignore tests/implementations/collections/test_area_selector.py --without-geo-packages --cov=src/fcollections --cov-report=xml:coverage-ut-nogeo.xml --cov-report=term
           mv .coverage .coverage-ut-nogeo
       - name: Upload unit test no-geo coverage artifacts
         uses: actions/upload-artifact@v4
@@ -129,7 +129,7 @@ jobs:
           pip install -e ".[testing]"
       - name: Run integration tests
         run: |
-          pytest integration_tests --cov=src --cov-report=xml:coverage-it.xml --cov-report=term
+          pytest integration_tests --cov=src/fcollections --cov-report=xml:coverage-it.xml --cov-report=term
           mv .coverage .coverage-it
       - name: Upload integration test coverage artifacts
         uses: actions/upload-artifact@v4
