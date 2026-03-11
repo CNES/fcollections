@@ -49,7 +49,7 @@ Repository='https://github.com/robin-cls/fcollections'
 
 [project.optional-dependencies]
 testing = ["pytest", "pytest-cov", "sympy", "beautifulsoup4", "pyftpdlib", "pyasynchat"]
-geo = ["shapely", "geopandas", "pyinterp", "dask", "numba"]
+geo = ["shapely", "geopandas", "pyinterp<2026.2.0", "dask", "numba"]
 doc = ["cartopy", "matplotlib", "sphinx", "sphinx-copybutton", "sphinx-design",
         "sphinx-book-theme", "myst-nb"]
 

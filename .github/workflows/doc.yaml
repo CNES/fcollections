@@ -52,7 +52,7 @@ jobs:
             beautifulsoup4
             shapely
             geopandas
-            pyinterp
+            'pyinterp<2026.2.0'
             dask
       - name: Install package (for autodoc)
         shell: bash -l {0}
