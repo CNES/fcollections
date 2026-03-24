@@ -21,6 +21,7 @@ jobs:
         with:
           environment-name: docs
           cache-environment: true
+          cache-environment-key: docs-${{ hashFiles('.github/workflows/doc.yaml') }}
           post-cleanup: 'all'
           init-shell: bash
           create-args: >
