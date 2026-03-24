@@ -49,7 +49,7 @@ Repository='https://github.com/robin-cls/fcollections'
 
 [project.optional-dependencies]
 testing = ["pytest", "pytest-cov", "sympy", "beautifulsoup4", "pyftpdlib", "pyasynchat"]
-geo = ["shapely", "geopandas", "pyinterp<2026.2.0", "dask", "numba"]
+geo = ["shapely", "geopandas", "pyinterp>=2026.2.0", "dask", "numba"]
 doc = ["cartopy", "matplotlib", "sphinx", "sphinx-copybutton", "sphinx-design",
         "sphinx-book-theme", "myst-nb"]
 
@@ -69,5 +69,9 @@ filterwarnings = [
     "error",
     # Can be safely ignored according to
     # https://github.com/Unidata/netcdf4-python/issues/1354
-    "ignore:numpy\\.ndarray size changed"
+    "ignore:numpy\\.ndarray size changed",
+    # Can be safely ignored according to
+    # https://github.com/giampaolo/pyftpdlib/issues/560
+    "ignore:The asyncore module is deprecated:DeprecationWarning",
+    "ignore:The asynchat module is deprecated:DeprecationWarning",
 ]

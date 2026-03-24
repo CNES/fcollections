@@ -40,7 +40,7 @@ jobs:
             pyftpdlib
             shapely
             geopandas
-            pyinterp<2026.2.0
+            pyinterp>=2026.2.0
             dask
       - name: Install python dependencies
         shell: bash -el {0}
@@ -94,7 +94,7 @@ jobs:
             pyftpdlib
             shapely
             geopandas
-            pyinterp<2026.2.0
+            pyinterp>=2026.2.0
             dask
       - name: Install python dependencies
         shell: bash -el {0}
