@@ -85,6 +85,12 @@ jobs:
         with:
           path: docs/implementations/data
           key: samples-${{ hashFiles('docs/implementations/scripts/pull_data*.py') }}
+      - name: Check pyinterp version
+        shell: bash -l {0}
+        run: |
+          python -c "import pyinterp; print(pyinterp.__version__)"
+          python -c "import fcollections.geometry"
+          python -c "import fcollections.implementations.optional"
       - name: Build Sphinx HTML
         shell: bash -l {0}
         run: |
