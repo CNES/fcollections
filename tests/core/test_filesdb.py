@@ -315,8 +315,8 @@ def test_metadata_wrong_filters(tmp_path: Path):
 def test_list_files(db_with_files: FilesDatabaseTest):
     expected = pda.DataFrame(
         [
-            (np.datetime64("2025-01-01"), 1, "/flat/a_file_001_20250101.nc"),
-            (np.datetime64("2025-01-01"), 2, "/flat/a_file_002_20250101.nc"),
+            (np.datetime64("2025-01-01", "us"), 1, "/flat/a_file_001_20250101.nc"),
+            (np.datetime64("2025-01-01", "us"), 2, "/flat/a_file_002_20250101.nc"),
         ],
         columns=["time", "a_number", "filename"],
     )
@@ -325,7 +325,7 @@ def test_list_files(db_with_files: FilesDatabaseTest):
 
 def test_list_files_filter(db_with_files: FilesDatabaseTest):
     expected = pda.DataFrame(
-        [(np.datetime64("2025-01-01"), 2, "/flat/a_file_002_20250101.nc")],
+        [(np.datetime64("2025-01-01", "us"), 2, "/flat/a_file_002_20250101.nc")],
         columns=["time", "a_number", "filename"],
     )
     assert expected.equals(db_with_files.list_files(a_number=2))
@@ -352,8 +352,8 @@ def test_list_files_predicate(
 ):
     expected = pda.DataFrame(
         [
-            (np.datetime64("2025-01-01"), 2, "/predicate/a_file_002_20250101.nc"),
-            (np.datetime64("2025-01-01"), 4, "/predicate/a_file_004_20250101.nc"),
+            (np.datetime64("2025-01-01", "us"), 2, "/predicate/a_file_002_20250101.nc"),
+            (np.datetime64("2025-01-01", "us"), 4, "/predicate/a_file_004_20250101.nc"),
         ],
         columns=["time", "a_number", "filename"],
     )

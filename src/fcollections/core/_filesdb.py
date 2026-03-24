@@ -690,7 +690,18 @@ class SubsetsUnmixer:
             )
         except AttributeError:
             # We have a tuple
-            subsets = df.groupby(list(self.partition_keys))
+            grouping_keys = list(self.partition_keys)
+            subsets = df.groupby(
+                # In pandas 2, a list with one single element gave a scalar keys
+                # for the groups. In pandas 3, a future warning is raised,
+                # asking to give either a single key or a list with more than
+                # one key
+                grouping_keys if len(grouping_keys) > 1 else grouping_keys[0],
+                # Pandas 3 tries to sort the groups, which can raise an error if
+                # a column cannot be ordered. We don't need this sort so we
+                # disable it
+                sort=False,
+            )
 
         # Pick one subset using panda duplicate handling
         subset_names = [
@@ -719,11 +730,14 @@ class SubsetsUnmixer:
                     for key in manual_pick
                     if len(df_subsets[key].unique()) > 1
                 }
-                raise ValueError(
-                    f"Subsets could not be unmixed, the following keys are duplicated and should be fixed manually: {ambiguity}"
+                msg = (
+                    "Subsets could not be unmixed, the following keys are "
+                    f"duplicated and should be fixed manually: {ambiguity}"
                 )
+                raise ValueError(msg)
 
         group_name = tuple(df_subsets.to_records(index=False)[-1])
+        group_name = group_name if len(group_name) > 1 else group_name[0]
         logger.debug("Subset selected %s", group_name)
         return subsets.get_group(group_name)
 
