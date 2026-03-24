@@ -94,7 +94,7 @@ def test_great_circle_distances_axis(
     assert np.array_equal(computedT.T, computed)
 
 
-def test_spheroid_distances_along_axis_axis(
+def test_spheroid_distances_along_axis(
     longitudes: np_t.NDArray[np.float64],
     latitudes: np_t.NDArray[np.float64],
 ):

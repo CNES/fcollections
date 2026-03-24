@@ -1,7 +1,8 @@
 """Adapts the distance computation to multiple data shapes."""
 
 import numpy as np
-from pyinterp.geodetic import Spheroid, coordinate_distances
+from pyinterp.geometry.geographic import Point, Spheroid
+from pyinterp.geometry.geographic.algorithms import distance
 
 from fcollections.utilities.reshape import slice_along_axis
 
@@ -81,6 +82,16 @@ def distances_along_axis(
     return distances_along_axis
 
 
+def _coordinate_distances(lon1, lat1, lon2, lat2, spheroid: Spheroid = Spheroid()):
+    distances = np.array(
+        [
+            distance(Point(lo1, la1), Point(lo2, la2), spheroid=spheroid)
+            for lo1, la1, lo2, la2 in zip(lon1, lat1, lon2, lat2)
+        ]
+    )
+    return distances
+
+
 def _spheroid_distances_along_axis(
     longitudes: np.ndarray,
     latitudes: np.ndarray,
@@ -94,8 +105,8 @@ def _spheroid_distances_along_axis(
     lat1 = slice_along_axis(latitudes, axis, slice(1, None))
 
     # Compute distance on ellipsoid
-    return coordinate_distances(
-        lon0.ravel(), lat0.ravel(), lon1.ravel(), lat1.ravel(), wgs=wgs
+    return _coordinate_distances(
+        lon0.ravel(), lat0.ravel(), lon1.ravel(), lat1.ravel(), spheroid=wgs
     ).reshape(lon0.shape)
 
 
