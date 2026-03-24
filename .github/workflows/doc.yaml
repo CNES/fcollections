@@ -57,7 +57,7 @@ jobs:
       - name: Install package (for autodoc)
         shell: bash -l {0}
         run: |
-          pip install -e .
+          pip install --force-reinstall --no-deps -e .
       - name: Install AVISO Client
         shell: bash -l {0}
         run: |
