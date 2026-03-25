@@ -54,19 +54,14 @@ jobs:
             geopandas
             pyinterp>=2026.2.0
             dask
+      - name: Install package (for autodoc)
+        shell: bash -l {0}
+        run: |
+          pip install -e .
       - name: Install AVISO Client
         shell: bash -l {0}
         run: |
           pip install altimetry-downloader-aviso
-      - name: Install package (for autodoc)
-        shell: bash -l {0}
-        run: |
-          pip install --force-reinstall --no-deps -e .
-      - name: Check fcollections source
-        shell: bash -l {0}
-        run: |
-          pip show fcollections
-          pip show altimetry-downloader-aviso
       - name: Restore cached sample data
         uses: actions/cache@v4
         id: restore_samples
