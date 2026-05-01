@@ -10,6 +10,7 @@ import textwrap
 import typing as tp
 import warnings
 from abc import ABCMeta
+from copy import copy
 
 import docstring_parser as dcs
 import pandas as pda
@@ -45,6 +46,7 @@ class FilesDatabaseMeta(ABCMeta):
         _create_method(attrs, "query", "_query")
         _create_method(attrs, "list_files", "_files")
         _create_method(attrs, "variables_info", "_variables_info")
+        _create_method(attrs, "filter_info", "_filter_info")
         _create_method(attrs, "map", "_map")
         new_class = super().__new__(cls, clsname, bases, attrs)
 
@@ -88,7 +90,13 @@ class FilesDatabaseMeta(ABCMeta):
             new_class._variables_info.__doc__,
             *method_parameters["variables_info"],
         )
-
+        _patch_method(
+            new_class,
+            "filter_info",
+            "_filter_info",
+            new_class._filter_info.__doc__,
+            *method_parameters["filter_info"],
+        )
         return new_class
 
 
@@ -159,6 +167,7 @@ def _combine_parameters(
         map(lambda x: x[1], filter(_is_subset_key, parameters["convention"][1].items()))
     )
     out["variables_info"] = (info_docstring, info_signature)
+    out["filter_info"] = (info_docstring, info_signature)
     return out
 
 
@@ -604,6 +613,11 @@ class FilesDatabase(metaclass=FilesDatabaseMeta):
         ValueError
             In case if one unique and homogeneous subset could not be extracted
             from the files metadata table
+
+        See Also
+        --------
+        subsets
+            To list the subsets keys.
         """
         # This docstring will be superseded by the metaclass
         unknown = kwargs.keys() - (
@@ -666,6 +680,118 @@ class FilesDatabase(metaclass=FilesDatabaseMeta):
 
         bag = dask.bag.core.from_sequence(df.to_records())
         return bag.map(wrapped)
+
+    def _filter_info(self, filter_name: str, **kwargs: tp.Any) -> set[tp.Any]:
+        """Returns the possible values for a given filter.
+
+        Because the files collection may mix multiple subsets, we want to ensure
+        that we return the filter values for one subset only. The parameters of
+        this method are the subset partitioning keys and can be given by the
+        user.
+
+        Parameters
+        ----------
+        filter_name
+            Name of the filter for which the possible values should be
+            requested.
+
+        Returns
+        -------
+        :
+            A set containing the possible values for a given filter.
+
+        Warns
+        -----
+        UserWarning
+            If the requested filter information cannot be extracted from the
+            layouts' intermediate node. In this case, a full scan is triggered,
+            which will slow down the computation.
+        UserWarning
+            If layouts are not enabled for this instance. In this case, a full
+            scan is triggered, which will slow down the computation.
+
+        Raises
+        ------
+        LayoutMismatchError
+            In case ``enable_layouts`` is True and a mismatch between the
+            layouts and the actual files is detected
+        ValueError
+            In case if one unique and homogeneous subset could not be extracted
+            from the files metadata table
+
+        See Also
+        --------
+        subsets
+            To list the subsets keys.
+        """
+        missing_partition_keys = set(self.unmixer.partition_keys) - set(kwargs.keys())
+        if (
+            filter_name not in self.unmixer.partition_keys
+            and len(self.subsets) > 1
+            and len(missing_partition_keys) > 0
+        ):
+            msg = (
+                "Cannot work on heterogenous datasets, subset should be chosen "
+                f"by providing the following filters: {self.unmixer.partition_keys} "
+                "(subsets can be displayed using the 'subsets' property)."
+            )
+            raise ValueError(msg)
+
+        if not self.enable_layouts:
+            msg = (
+                "Layouts are not enabled, full scan is necessary to deduce "
+                f"possible values of filter {filter_name}. Enable layouts to "
+                "improve performance."
+            )
+            warnings.warn(msg)
+            return set(self.list_files(**kwargs)[filter_name])
+
+        selected_layouts = []
+        for layout in self.layouts:
+            for ii, convention in enumerate(layout.conventions[:-1]):
+                # We could also handle a more complex case with a
+                # record containing multiple pieces of information. However, the
+                # current payload returned by the Visitors must be reviewed
+                # beforehand
+                if (
+                    len(convention.fields) == 1
+                    and convention.fields[0].name == filter_name
+                ):
+                    selected_layouts.append(Layout(layout.conventions[: ii + 1]))
+                    break
+
+        if len(selected_layouts) == 0:
+            msg = (
+                "Layouts do not contain intermediate nodes (directories) "
+                f"with information about filter {filter_name}. Falling back "
+                "to full scan to deduce the filters' possible values (the "
+                "performance is degraded)."
+            )
+            warnings.warn(msg)
+            return set(self.list_files(**kwargs)[filter_name])
+
+        metadata_collector = FileSystemMetadataCollector(
+            selected_layouts, self.discoverer.root_node
+        )
+        return {x[0] for x in metadata_collector.discover(**kwargs)}
+
+    @property
+    def subsets(self) -> list[dict[str, tp.Any]]:
+        """List of the subsets combinations."""
+        return list(self._subsets(0))
+
+    def _subsets(
+        self, current_index: int, **higher_partition_values: tp.Any
+    ) -> tp.Generator[dict[str, tp.Any], None, None]:
+        current_key = self.unmixer.partition_keys[current_index]
+        current_values = self.filter_info(current_key, **higher_partition_values)
+        for current_value in current_values:
+            result = copy(higher_partition_values)
+            result[current_key] = current_value
+            if current_index < len(self.unmixer.partition_keys) - 1:
+                yield from self._subsets(current_index + 1, **result)
+            else:
+                yield result
 
 
 @dc.dataclass

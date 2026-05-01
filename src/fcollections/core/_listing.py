@@ -576,6 +576,7 @@ class LayoutVisitor(IVisitor):
 
         layouts_for_children: list[Layout] = []
         record = None
+        return_payload = False
         for layout in self.layouts:
             # Prune non matching layouts for this directory. We need to test all
             # layouts to eliminate non matching layouts as early as possible in
@@ -583,6 +584,15 @@ class LayoutVisitor(IVisitor):
             result = layout.parse_node(dir_node.level - 1, dir_node.name)
             if result is not None:
                 layouts_for_children.append(layout)
+
+            # In case the layout leaf is a folder, the exploration must be
+            # stopped even though the actual DirNode has children. This is
+            # because the layout won't be able to go deeper. This case arises
+            # when we want to extract information at a given level in the file
+            # system hierarchy.
+            if result is not None and dir_node.level == len(layout.conventions):
+                return_payload = True
+
             if record is None:
                 # Do not override a valid record with a None
                 record = result
@@ -603,8 +613,12 @@ class LayoutVisitor(IVisitor):
             )
             return VisitResult(False)
 
-        # Don't return a payload for dir nodes (will be subject to change later)
-        return VisitResult(True, None, layouts_for_children)
+        # Return payload for dir nodes only if dir nodes are the last convention
+        # defined in the layouts.
+        if return_payload:
+            return VisitResult(False, record, [])
+        else:
+            return VisitResult(True, None, layouts_for_children)
 
     def visit_file(self, file_node: FileNode) -> VisitResult:
         """Visits a file node.
