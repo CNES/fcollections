@@ -590,34 +590,32 @@ class FilesDatabase(metaclass=FilesDatabaseMeta):
         return ds
 
     def _variables_info(self, **kwargs) -> GroupMetadata | None:
-        """Returns the variables metadata.
+        """Return metadata describing the variables.
 
         Because the files collection may mix multiple subsets, we want to ensure
         that we return the variables of one subset only. The parameters of this
         method are the subset partitioning keys and can be given by the user to
         ensure a consistent set of variables. If the input parameters are not
         sufficient to unmix the subsets, the user will be notified with a
-        ValueError
+        ``ValueError``.
 
         Returns
         -------
+        GroupMetadata | None
             A GroupMetadata containing the variables, dimensions, attributes and
             subgroups. None is returned in case no files is found for the given
             subset
 
+        See Also
+        --------
+        FilesDatabase.subsets: To list the subsets keys.
+
         Raises
         ------
         LayoutMismatchError
-            In case ``enable_layouts`` is True and a mismatch between the
-            layouts and the actual files is detected
+            Raised if ``enable_layouts`` is True and a mismatch is detected.
         ValueError
-            In case if one unique and homogeneous subset could not be extracted
-            from the files metadata table
-
-        See Also
-        --------
-        subsets
-            To list the subsets keys.
+            Raised if a unique and homogeneous subset cannot be extracted.
         """
         # This docstring will be superseded by the metaclass
         unknown = kwargs.keys() - (

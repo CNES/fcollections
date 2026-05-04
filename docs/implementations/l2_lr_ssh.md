@@ -140,7 +140,7 @@ There are currently three modes for stacking the half orbits
   are cropped and we need an additional dimension to reflect the spatial jump
 
 ```{code-cell}
-fc = NetcdfFilesDatabaseSwotLRL2("data")
+fc = NetcdfFilesDatabaseSwotLRL2("data_l2_lr_ssh")
 ds = fc.query(stack='CYCLES', cycle_number=[9, 10, 11], pass_number=10, subset='Basic')
 ds.ssha_karin_2.data
 ```

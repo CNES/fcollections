@@ -523,7 +523,7 @@ class LayoutVisitor(IVisitor):
         layouts: list[Layout],
         stat_fields: tp.Iterable[str] = tuple(),
         on_mismatch_directory: LayoutMismatchHandling = LayoutMismatchHandling.RAISE,
-        on_mismatch_file: LayoutMismatchHandling = LayoutMismatchHandling.IGNORE,
+        on_mismatch_file: LayoutMismatchHandling = LayoutMismatchHandling.RAISE,
     ):
         self.layouts = layouts
         self.stat_fields = list(stat_fields)
