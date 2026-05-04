@@ -18,7 +18,7 @@ from fsspec import AbstractFileSystem
 from fsspec.implementations.local import LocalFileSystem
 
 from ._filenames import FileNameConvention
-from ._listing import DirNode, FileSystemMetadataCollector, Layout
+from ._listing import DirNode, FileSystemMetadataCollector, Layout, LayoutMismatchError
 from ._metadata import GroupMetadata
 from ._readers import IFilesReader
 
@@ -46,7 +46,7 @@ class FilesDatabaseMeta(ABCMeta):
         _create_method(attrs, "query", "_query")
         _create_method(attrs, "list_files", "_files")
         _create_method(attrs, "variables_info", "_variables_info")
-        _create_method(attrs, "filter_info", "_filter_info")
+        _create_method(attrs, "filter_values", "_filter_values")
         _create_method(attrs, "map", "_map")
         new_class = super().__new__(cls, clsname, bases, attrs)
 
@@ -92,10 +92,10 @@ class FilesDatabaseMeta(ABCMeta):
         )
         _patch_method(
             new_class,
-            "filter_info",
-            "_filter_info",
-            new_class._filter_info.__doc__,
-            *method_parameters["filter_info"],
+            "filter_values",
+            "_filter_values",
+            new_class._filter_values.__doc__,
+            *method_parameters["filter_values"],
         )
         return new_class
 
@@ -167,7 +167,7 @@ def _combine_parameters(
         map(lambda x: x[1], filter(_is_subset_key, parameters["convention"][1].items()))
     )
     out["variables_info"] = (info_docstring, info_signature)
-    out["filter_info"] = (info_docstring, info_signature)
+    out["filter_values"] = (info_docstring, info_signature)
     return out
 
 
@@ -679,7 +679,7 @@ class FilesDatabase(metaclass=FilesDatabaseMeta):
         bag = dask.bag.core.from_sequence(df.to_records())
         return bag.map(wrapped)
 
-    def _filter_info(self, filter_name: str, **kwargs: tp.Any) -> set[tp.Any]:
+    def _filter_values(self, filter_name: str, **kwargs: tp.Any) -> set[tp.Any]:
         """Returns the possible values for a given filter.
 
         Because the files collection may mix multiple subsets, we want to ensure
@@ -738,7 +738,7 @@ class FilesDatabase(metaclass=FilesDatabaseMeta):
         if not self.enable_layouts:
             msg = (
                 "Layouts are not enabled, full scan is necessary to deduce "
-                f"possible values of filter {filter_name}. Enable layouts to "
+                f"possible values of filter '{filter_name}'. Enable layouts to "
                 "improve performance."
             )
             warnings.warn(msg)
@@ -761,7 +761,7 @@ class FilesDatabase(metaclass=FilesDatabaseMeta):
         if len(selected_layouts) == 0:
             msg = (
                 "Layouts do not contain intermediate nodes (directories) "
-                f"with information about filter {filter_name}. Falling back "
+                f"with information about filter '{filter_name}'. Falling back "
                 "to full scan to deduce the filters' possible values (the "
                 "performance is degraded)."
             )
@@ -771,7 +771,18 @@ class FilesDatabase(metaclass=FilesDatabaseMeta):
         metadata_collector = FileSystemMetadataCollector(
             selected_layouts, self.discoverer.root_node
         )
-        return {x[0] for x in metadata_collector.discover(**kwargs)}
+
+        try:
+            return {x[0] for x in metadata_collector.discover(**kwargs)}
+        except LayoutMismatchError:
+            logger.info(
+                "Layouts are enabled and should contain information about "
+                "filter '%s' in their intermediate nodes. However,"
+                " the actual file organization does not match the layouts. "
+                "Falling back to full scan (the performance is degraded).",
+                filter_name,
+            )
+            return set(self.list_files(**kwargs)[filter_name])
 
     @property
     def subsets(self) -> list[dict[str, tp.Any]]:
@@ -782,7 +793,7 @@ class FilesDatabase(metaclass=FilesDatabaseMeta):
         self, current_index: int, **higher_partition_values: tp.Any
     ) -> tp.Generator[dict[str, tp.Any], None, None]:
         current_key = self.unmixer.partition_keys[current_index]
-        current_values = self.filter_info(current_key, **higher_partition_values)
+        current_values = self._filter_values(current_key, **higher_partition_values)
         for current_value in current_values:
             result = copy(higher_partition_values)
             result[current_key] = current_value
