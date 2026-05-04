@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import abc
 import dataclasses as dc
+import functools
 import inspect
 import logging
 import textwrap
@@ -716,12 +717,33 @@ class FilesDatabase(metaclass=FilesDatabaseMeta):
         ValueError
             In case if one unique and homogeneous subset could not be extracted
             from the files metadata table
+        ValueError
+            In case the input filter name is in none of the configured layouts.
 
         See Also
         --------
         subsets
             To list the subsets keys.
         """
+        if self.enable_layouts:
+            conventions = map(lambda l: l.conventions, self.layouts)
+            conventions = functools.reduce(lambda a, b: a + b, conventions)
+            fields = map(
+                lambda convention: {f.name for f in convention.fields}, conventions
+            )
+            field_names = functools.reduce(lambda a, b: a | b, fields)
+        else:
+            field_names = {
+                field.name for field in self.layouts[0].conventions[-1].fields
+            }
+
+        if filter_name not in field_names:
+            msg = (
+                f"Unknown filter name {filter_name}. Possible values are "
+                f"{field_names}"
+            )
+            raise ValueError(msg)
+
         missing_partition_keys = set(self.unmixer.partition_keys) - set(kwargs.keys())
         if (
             filter_name not in self.unmixer.partition_keys
@@ -787,6 +809,8 @@ class FilesDatabase(metaclass=FilesDatabaseMeta):
     @property
     def subsets(self) -> list[dict[str, tp.Any]]:
         """List of the subsets combinations."""
+        if self.unmixer is None:
+            return []
         return list(self._subsets(0))
 
     def _subsets(

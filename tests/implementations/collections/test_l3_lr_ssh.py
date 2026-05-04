@@ -738,3 +738,27 @@ class TestLayout:
         assert set(map(tuple, actual.to_numpy())) == set(
             map(tuple, expected.to_numpy())
         )
+
+
+def test_subsets(l3_lr_ssh_dir: Path):
+    db = NetcdfFilesDatabaseSwotLRL3(l3_lr_ssh_dir)
+    expected = [
+        {
+            "subset": ProductSubset.Unsmoothed,
+            "version": "2.0.1",
+        },
+        {
+            "subset": ProductSubset.Expert,
+            "version": "2.0.1",
+        },
+        {
+            "subset": ProductSubset.Expert,
+            "version": "1.0.2",
+        },
+        {
+            "subset": ProductSubset.Basic,
+            "version": "1.0.2",
+        },
+    ]
+    assert len(db.subsets) == len(expected)
+    assert all([subset in expected for subset in db.subsets])
