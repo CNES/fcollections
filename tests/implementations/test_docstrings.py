@@ -135,10 +135,10 @@ def test_query_docstring(db, keywords, request):
 @pytest.mark.parametrize(
     "db, keywords",
     [
-        ("swot_lr_l2_db", ["variables metadata", "level", "subset"]),
-        ("swot_lr_l3_db", ["variables metadata"]),
-        ("nadir_db", ["variables metadata", "resolution", "sensor"]),
-        ("sst_db", ["variables metadata"]),
+        ("swot_lr_l2_db", ["metadata describing the variables", "level", "subset"]),
+        ("swot_lr_l3_db", ["metadata describing the variables"]),
+        ("nadir_db", ["metadata describing the variables", "resolution", "sensor"]),
+        ("sst_db", ["metadata describing the variables"]),
     ],
 )
 def test_variables_info_docstring(db, keywords, request):

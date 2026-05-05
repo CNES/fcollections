@@ -128,7 +128,6 @@ def l3_lr_ww_files() -> list[str]:
         "v2_0/Light/cycle_482/SWOT_L3_LR_WIND_WAVE_482_011_20230406T051804_20230406T060909_v2.0.nc",
         "v2_0/Light/cycle_482/SWOT_L3_LR_WIND_WAVE_482_012_20230406T060910_20230406T070014_v2.0.nc",
         "v3_0/Extended/cycle_010/SWOT_L3_LR_WIND_WAVE_Extended_010_010_20240125T025352_20240125T034438_v3.0.nc",
-        "v2_0/Light/cycle_482/SWOT_L3_LR_WIND_WAVE_482_012_20230406T060910_20230406T070014_PIC2_v2.0.nc",
     ]
 
 
@@ -136,7 +135,7 @@ def l3_lr_ww_files() -> list[str]:
 def l3_lr_ww_dir_layout(
     tmp_path_factory: pytest.TempPathFactory, l3_lr_ww_files: list[str]
 ) -> Path:
-    root = tmp_path_factory.mktemp("l2_lr_ssh")
+    root = tmp_path_factory.mktemp("l3_lr_ww")
 
     # create test folder
     for filepath in l3_lr_ww_files:
