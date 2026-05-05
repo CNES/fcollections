@@ -264,7 +264,6 @@ class INode(abc.ABC):
             The child nodes, either files or folders
         """
 
-    @abc.abstractmethod
     def clear(self):
         """Clear child nodes."""
 
@@ -284,9 +283,6 @@ class FileNode(INode):
             An empty list (files have no children)
         """
         return []
-
-    def clear(self):
-        pass
 
 
 class DirNode(INode):
