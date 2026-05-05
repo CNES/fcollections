@@ -49,6 +49,20 @@ def test_file_node_no_children():
     assert len(node.children()) == 0
 
 
+def test_file_no_clear():
+    # No effect
+    node = FileNode("foo", {}, 0)
+    node.clear()
+
+
+def test_dir_node_clear():
+    node = DirNode("foo", {"name": "foo"}, MemoryFileSystem(), 0)
+    node.children()
+    assert node._children is not None
+    node.clear()
+    assert node._children is None
+
+
 @pytest.fixture(scope="session")
 def filepaths() -> list[str]:
     # The files that we will use to test the listing and filtering using the
@@ -456,6 +470,41 @@ def test_layout_visit_dir(
     assert result.surviving_layouts == [layouts_v2[ii] for ii in layouts_selection]
 
 
+@pytest.fixture(scope="session")
+def layouts_v3(layout: Layout) -> list[Layout]:
+    return [
+        Layout([layout.conventions[0]]),
+        Layout([layout.conventions[1]]),
+    ]
+
+
+@pytest.mark.parametrize(
+    "path, level, expected_explore_next, payload",
+    [
+        ("root", 0, True, None),
+        ("root/RED", 1, False, (Color.RED,)),
+        ("root/HR_009", 1, False, ("HR", 9)),
+    ],
+)
+def test_layout_visit_dir_payload(
+    layouts_v3: list[Layout],
+    memory_fs: MemoryFileSystem,
+    memory_root: Path,
+    path: str,
+    level: int,
+    expected_explore_next: bool,
+    payload: None | tuple[tp.Any, ...],
+):
+
+    path = memory_root / path
+    node = DirNode(path.name, {"name": path.as_posix()}, memory_fs, level)
+
+    visitor = LayoutVisitor(layouts_v3)
+    result = visitor.visit_dir(node)
+    assert result.explore_next == expected_explore_next
+    assert result.payload == payload
+
+
 @pytest.mark.parametrize(
     "path, context, on_mismatch",
     [
@@ -613,7 +662,9 @@ def test_walk_layout(
     for layout in layouts_v2:
         layout.set_filters(**filters)
     visitor = LayoutVisitor(
-        layouts_v2, on_mismatch_directory=LayoutMismatchHandling.IGNORE
+        layouts_v2,
+        on_mismatch_directory=LayoutMismatchHandling.IGNORE,
+        on_mismatch_file=LayoutMismatchHandling.IGNORE,
     )
     root_str = (memory_root / "root").as_posix()
     root_node = DirNode(root_str, {"name": root_str}, memory_fs, 0)

@@ -48,6 +48,7 @@ given criterias
 
 ```{code-cell}
 from fcollections.implementations import NetcdfFilesDatabaseSwotLRL2
+
 fc = NetcdfFilesDatabaseSwotLRL2(path)
 fc.list_files(cycle_number=1)
 ```
@@ -83,6 +84,8 @@ ds = fc.query(selected_variables=['ssha'])
 list(ds.variables)
 ```
 
+### Filter types
+
 Each implementation has its own filters. By order of availability, the user
 should consult:
 
@@ -95,23 +98,42 @@ should consult:
 fc.query?
 ```
 
+### Filter values
+
+Possible values for a given filter can be displayed
+
+```{code-cell}
+fc.filter_values('version')
+```
+
+Only filters whose information are contained in the intermediated folders can be
+scanned in a quick way, other will trigger a full scan. As such, to ensure
+optimal performance, this method should be called with the layouts enabled, with
+files organized with folders (see the [advanced section](#disable-layouts)), and
+on filters whose information is encoded in the folders.
+
 ## Access metadata
 
 The database can display information about the variables and attributes
 contained in the files' collection using the ``variables_info`` method
 
 ```{code-cell}
-fc.variables_info(subset='Expert')
+# Use the enumeration name for filtering a specific subset
+fc.variables_info()
 ```
 
 It will offer a simple collapsible tree view with multiple levels of nesting
 depending on the data you manipulate
 
-In order to return consistent metadata, the method ensures that only one
-homogeneous subset is selected. In case you handle unmixable data (for example
-Expert and Unsmoothed datasets), you must give proper filters on the subset
-partitioning keys ``fc.unmixer.partition_keys``. If these filters are missing,
-an error with the possible choices will be raised.
+## Subsets
+
+### Errors on mixed subsets
+
+In order to return consistent results, most methods must work on an homogeneous
+subset of data. In case multiple subsets are mixed (for example Expert and
+Unsmoothed datasets), proper filters matching the partitioning keys must be
+given. If these filters are missing, an error with the possible choices will be
+raised.
 
 ```{code-cell}
 :tags: [raises-exception]
@@ -123,7 +145,32 @@ ds.to_netcdf(f'{path}/SWOT_L2_LR_SSH_Unsmoothed_001_012_20240101T030000_20240101
 fc.variables_info()
 ```
 
+### Compatibility matrix
+
+The following table summarizes which methods can work on mixed data. Most
+methods need homogeneous data and will require filtering the subset.
+
+| Method             | Works on mixed data ? |
+|--------------------|-----------------------|
+| ``list_files``     | Yes                   |
+| ``variables_info`` | No                    |
+| ``filter_values``  | No                    |
+| ``query``          | No                    |
+| ``map``            | No                    |
+
+### Listing subsets
+
+Subsets that are on the file system can be listed using the
+{meth}`subsets <fcollections.core.FilesDatabase.subsets>` property.
+
 ```{code-cell}
-# Use the enumeration name for filtering
+fc.subsets
+```
+
+One of the returned choices must be selected and used as a filter to work on an
+homogeneous dataset.
+
+```{code-cell}
+# Use the enumeration name for filtering a specific subset
 fc.variables_info(subset='Expert')
 ```

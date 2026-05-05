@@ -264,6 +264,9 @@ class INode(abc.ABC):
             The child nodes, either files or folders
         """
 
+    def clear(self):
+        """Clear child nodes."""
+
 
 class FileNode(INode):
     """File node of a file system tree."""
@@ -325,6 +328,9 @@ class DirNode(INode):
         if self._children is None:
             self._children = list(self._compute_children())
         return self._children
+
+    def clear(self):
+        self._children = None
 
     def _compute_children(self) -> tp.Iterator[INode]:
         # return list of FileNode or DirNode instances
@@ -523,7 +529,7 @@ class LayoutVisitor(IVisitor):
         layouts: list[Layout],
         stat_fields: tp.Iterable[str] = tuple(),
         on_mismatch_directory: LayoutMismatchHandling = LayoutMismatchHandling.RAISE,
-        on_mismatch_file: LayoutMismatchHandling = LayoutMismatchHandling.IGNORE,
+        on_mismatch_file: LayoutMismatchHandling = LayoutMismatchHandling.RAISE,
     ):
         self.layouts = layouts
         self.stat_fields = list(stat_fields)
@@ -576,6 +582,7 @@ class LayoutVisitor(IVisitor):
 
         layouts_for_children: list[Layout] = []
         record = None
+        return_payload = False
         for layout in self.layouts:
             # Prune non matching layouts for this directory. We need to test all
             # layouts to eliminate non matching layouts as early as possible in
@@ -583,6 +590,15 @@ class LayoutVisitor(IVisitor):
             result = layout.parse_node(dir_node.level - 1, dir_node.name)
             if result is not None:
                 layouts_for_children.append(layout)
+
+            # In case the layout leaf is a folder, the exploration must be
+            # stopped even though the actual DirNode has children. This is
+            # because the layout won't be able to go deeper. This case arises
+            # when we want to extract information at a given level in the file
+            # system hierarchy.
+            if result is not None and dir_node.level == len(layout.conventions):
+                return_payload = True
+
             if record is None:
                 # Do not override a valid record with a None
                 record = result
@@ -603,8 +619,12 @@ class LayoutVisitor(IVisitor):
             )
             return VisitResult(False)
 
-        # Don't return a payload for dir nodes (will be subject to change later)
-        return VisitResult(True, None, layouts_for_children)
+        # Return payload for dir nodes only if dir nodes are the last convention
+        # defined in the layouts.
+        if return_payload:
+            return VisitResult(False, record, [])
+        else:
+            return VisitResult(True, None, layouts_for_children)
 
     def visit_file(self, file_node: FileNode) -> VisitResult:
         """Visits a file node.
@@ -784,6 +804,7 @@ def walk(node: INode, visitor: IVisitor) -> tp.Iterator[tp.Any]:
         return
 
     for child in node.children():
+        logger.debug("child %s", child.name)
         yield from walk(child, visitor.advance(result))
 
 
@@ -915,6 +936,7 @@ class FileSystemMetadataCollector:
             # to modify the Layout interface
             layout.set_filters(**filters)
 
+        self.root_node.clear()
         if enable_layouts:
             logger.debug("Using layouts to speed up listing")
             visitor = LayoutVisitor(self.layouts, stat_fields)

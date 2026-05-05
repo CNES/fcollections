@@ -28,8 +28,6 @@ from fcollections.core import (
 )
 
 if tp.TYPE_CHECKING:
-    from pathlib import Path
-
     import fsspec
 
 
@@ -82,6 +80,10 @@ class FilesDatabaseTestNoUnmixer(FilesDatabase):
         Layout([FileNameConventionTest()]),
         Layout(
             [
+                FileNameConvention(
+                    regex=re.compile(r"^a_(?P<a_number>\d{3})$"),
+                    fields=[FileNameFieldInteger("a_number")],
+                ),
                 FileNameConvention(
                     regex=re.compile(r"^(?P<b_string>foo|bar)$"),
                     fields=[FileNameFieldString("b_string")],
@@ -461,9 +463,20 @@ def test_query_metadata_injection(db_good_dim: FilesDatabaseTestGoodDim):
 @pytest.fixture(scope="session")
 def db_with_files_bad_layout() -> FilesDatabaseTest:
     fs = fs_mem.MemoryFileSystem()
-    fs.touch("baz/foo/a_file_001_20250101.nc")
-    fs.touch("baz/bar/a_file_002_20250101.nc")
-    db = FilesDatabaseTest(path="/", fs=fs)
+    fs.touch("/bad_layout/baz/a_001/foo/a_file_001_20250101.nc")
+    fs.touch("/bad_layout/baz/a_001/bar/a_file_001_20250101.nc")
+    fs.touch("/bad_layout/baz/a_002/bar/a_file_002_20250101.nc")
+    db = FilesDatabaseTest(path="/bad_layout", fs=fs)
+    return db
+
+
+@pytest.fixture(scope="session")
+def db_with_files_good_layout(
+    db_with_files_bad_layout: FilesDatabaseTest,
+) -> FilesDatabaseTest:
+    fs = db_with_files_bad_layout.fs
+    fixed_path = Path(db_with_files_bad_layout.path) / "baz"
+    db = FilesDatabaseTest(fixed_path, fs, enable_layouts=True)
     return db
 
 
@@ -472,31 +485,29 @@ def test_query_bad_layout(db_with_files_bad_layout: FilesDatabaseTest):
         db_with_files_bad_layout.query()
 
 
-def test_query_bad_layout_fallback(db_with_files_bad_layout: FilesDatabaseTest):
-    fs = db_with_files_bad_layout.fs
-    fixed_path = Path(db_with_files_bad_layout.path) / "baz"
-    db = FilesDatabaseTest(fixed_path, fs, enable_layouts=True)
-    reference = db.query(a_number=1)
+def test_query_bad_layout_fallback(
+    db_with_files_bad_layout: FilesDatabaseTest,
+    db_with_files_good_layout: FilesDatabaseTest,
+):
+    reference = db_with_files_good_layout.query(a_number=1)
     assert reference is not None
 
-    db = FilesDatabaseTest(db_with_files_bad_layout.path, fs, enable_layouts=False)
+    db = FilesDatabaseTest(
+        db_with_files_bad_layout.path, db_with_files_bad_layout.fs, enable_layouts=False
+    )
     actual = db.query(a_number=1)
 
     xr.testing.assert_equal(reference, actual)
 
 
-def test_query_layout_parameter_not_known(db_with_files_bad_layout: FilesDatabaseTest):
-    fs = db_with_files_bad_layout.fs
-    fixed_path = Path(db_with_files_bad_layout.path) / "baz"
-    db = FilesDatabaseTest(fixed_path, fs, enable_layouts=True)
-
+def test_query_layout_parameter_not_known(db_with_files_good_layout: FilesDatabaseTest):
     # Low level interface knows of layout filters
-    df = db.discoverer.to_dataframe(b_string="foo")
+    df = db_with_files_good_layout.discoverer.to_dataframe(b_string="foo")
     assert len(df) > 0
 
     # But higher level interface does not (yet)
     with pytest.raises(ValueError):
-        db.query(b_string="foo")
+        db_with_files_good_layout.query(b_string="foo")
 
 
 def test_map_no_dask(monkeypatch: pytest.MonkeyPatch, db_with_files: FilesDatabaseTest):
@@ -528,5 +539,88 @@ def test_map_wrong_parameter(
         db_with_files.map(lambda x, y: None, **{parameter: value})
 
 
-def test_map_empty(db_with_files: FileDatabaseTest):
+def test_map_empty(db_with_files: FilesDatabaseTest):
     assert db_with_files.map(lambda x, y: x, a_number=-1).compute() == []
+
+
+def test_subsets_no_unmixer(db_with_files_good_layout: FilesDatabaseTest):
+    db = FilesDatabaseTestNoUnmixer(
+        db_with_files_good_layout.path, db_with_files_good_layout.fs
+    )
+    assert len(db.subsets) == 0
+
+
+def test_subsets_empty_dir(db_with_files_good_layout: FilesDatabaseTest):
+    db_with_files_good_layout.fs.mkdir("empty")
+    db = FilesDatabaseTest("empty", db_with_files_good_layout.fs)
+    assert len(db.subsets) == 0
+
+
+def test_subsets(db_with_files_good_layout: FilesDatabaseTest):
+    assert len(db_with_files_good_layout.subsets) == 2
+    assert all(
+        [
+            subset in [{"a_number": 1}, {"a_number": 2}]
+            for subset in db_with_files_good_layout.subsets
+        ]
+    )
+
+
+def test_filters_value_full_scan_filter_not_in_layout(
+    db_with_files_good_layout: FilesDatabaseTest,
+):
+    with pytest.warns(UserWarning, match="intermediate"):
+        values = db_with_files_good_layout.filter_values("time", a_number=1)
+    assert values == {np.datetime64("2025-01-01")}
+
+
+def test_filters_value_layouts_disabled_unknown_field(
+    db_with_files_bad_layout: FilesDatabaseTest,
+):
+    db = FilesDatabaseTest(
+        db_with_files_bad_layout.path, db_with_files_bad_layout.fs, enable_layouts=False
+    )
+    with pytest.raises(ValueError, match="Unknown"):
+        db.filter_values("b_string", a_number=1)
+
+
+def test_filters_value_layouts_disabled_full_scan(
+    db_with_files_bad_layout: FilesDatabaseTest,
+):
+    db = FilesDatabaseTest(
+        db_with_files_bad_layout.path, db_with_files_bad_layout.fs, enable_layouts=False
+    )
+    with pytest.warns(UserWarning, match="enabled"):
+        values = db.filter_values(
+            "a_number",
+        )
+    assert values == {1, 2}
+
+
+def test_filters_value_full_scan_flat(db_with_files: FilesDatabaseTest):
+    values = db_with_files.filter_values("a_number")
+    assert values == {1, 2}
+
+
+def test_filters_value_full_scan_layouts_mismatch(
+    db_with_files_bad_layout: FilesDatabaseTest,
+):
+    with pytest.raises(LayoutMismatchError):
+        db_with_files_bad_layout.filter_values("b_string", a_number=1)
+
+
+def test_filters_value_layout(db_with_files_good_layout: FilesDatabaseTest):
+    values = db_with_files_good_layout.filter_values("b_string", a_number=1)
+    assert values == {"foo", "bar"}
+
+
+def test_filters_value_unknown(db_with_files_good_layout: FilesDatabaseTest):
+    with pytest.raises(ValueError, match="Unknown filter"):
+        db_with_files_good_layout.filter_values("c_unknown", a_number=1)
+
+
+def test_filters_value_missing_subset_selection(
+    db_with_files_good_layout: FilesDatabaseTest,
+):
+    with pytest.raises(ValueError, match="heterogenous datasets"):
+        db_with_files_good_layout.filter_values("b_string")

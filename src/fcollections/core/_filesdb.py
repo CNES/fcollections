@@ -4,12 +4,14 @@ from __future__ import annotations
 
 import abc
 import dataclasses as dc
+import functools
 import inspect
 import logging
 import textwrap
 import typing as tp
 import warnings
 from abc import ABCMeta
+from copy import copy
 
 import docstring_parser as dcs
 import pandas as pda
@@ -17,7 +19,7 @@ from fsspec import AbstractFileSystem
 from fsspec.implementations.local import LocalFileSystem
 
 from ._filenames import FileNameConvention
-from ._listing import DirNode, FileSystemMetadataCollector, Layout
+from ._listing import DirNode, FileSystemMetadataCollector, Layout, LayoutMismatchError
 from ._metadata import GroupMetadata
 from ._readers import IFilesReader
 
@@ -45,6 +47,7 @@ class FilesDatabaseMeta(ABCMeta):
         _create_method(attrs, "query", "_query")
         _create_method(attrs, "list_files", "_files")
         _create_method(attrs, "variables_info", "_variables_info")
+        _create_method(attrs, "filter_values", "_filter_values")
         _create_method(attrs, "map", "_map")
         new_class = super().__new__(cls, clsname, bases, attrs)
 
@@ -88,7 +91,13 @@ class FilesDatabaseMeta(ABCMeta):
             new_class._variables_info.__doc__,
             *method_parameters["variables_info"],
         )
-
+        _patch_method(
+            new_class,
+            "filter_values",
+            "_filter_values",
+            new_class._filter_values.__doc__,
+            *method_parameters["filter_values"],
+        )
         return new_class
 
 
@@ -159,6 +168,7 @@ def _combine_parameters(
         map(lambda x: x[1], filter(_is_subset_key, parameters["convention"][1].items()))
     )
     out["variables_info"] = (info_docstring, info_signature)
+    out["filter_values"] = (info_docstring, info_signature)
     return out
 
 
@@ -581,29 +591,32 @@ class FilesDatabase(metaclass=FilesDatabaseMeta):
         return ds
 
     def _variables_info(self, **kwargs) -> GroupMetadata | None:
-        """Returns the variables metadata.
+        """Return metadata describing the variables.
 
         Because the files collection may mix multiple subsets, we want to ensure
         that we return the variables of one subset only. The parameters of this
         method are the subset partitioning keys and can be given by the user to
         ensure a consistent set of variables. If the input parameters are not
         sufficient to unmix the subsets, the user will be notified with a
-        ValueError
+        ``ValueError``.
 
         Returns
         -------
+        GroupMetadata | None
             A GroupMetadata containing the variables, dimensions, attributes and
             subgroups. None is returned in case no files is found for the given
             subset
 
+        See Also
+        --------
+        FilesDatabase.subsets: To list the subsets keys.
+
         Raises
         ------
         LayoutMismatchError
-            In case ``enable_layouts`` is True and a mismatch between the
-            layouts and the actual files is detected
+            Raised if ``enable_layouts`` is True and a mismatch is detected.
         ValueError
-            In case if one unique and homogeneous subset could not be extracted
-            from the files metadata table
+            Raised if a unique and homogeneous subset cannot be extracted.
         """
         # This docstring will be superseded by the metaclass
         unknown = kwargs.keys() - (
@@ -666,6 +679,152 @@ class FilesDatabase(metaclass=FilesDatabaseMeta):
 
         bag = dask.bag.core.from_sequence(df.to_records())
         return bag.map(wrapped)
+
+    def _filter_values(self, filter_name: str, **kwargs: tp.Any) -> set[tp.Any]:
+        """Returns the possible values for a given filter.
+
+        Because the files collection may mix multiple subsets, we want to ensure
+        that we return the filter values for one subset only. The parameters of
+        this method are the subset partitioning keys and can be given by the
+        user.
+
+        Parameters
+        ----------
+        filter_name
+            Name of the filter for which the possible values should be
+            requested.
+
+        Returns
+        -------
+        :
+            A set containing the possible values for a given filter.
+
+        Warns
+        -----
+        UserWarning
+            If the requested filter information cannot be extracted from the
+            layouts' intermediate node. In this case, a full scan is triggered,
+            which will slow down the computation.
+        UserWarning
+            If layouts are not enabled for this instance. In this case, a full
+            scan is triggered, which will slow down the computation.
+
+        Raises
+        ------
+        LayoutMismatchError
+            In case ``enable_layouts`` is True and a mismatch between the
+            layouts and the actual files is detected
+        ValueError
+            In case if one unique and homogeneous subset could not be extracted
+            from the files metadata table
+        ValueError
+            In case the input filter name is in none of the configured layouts.
+
+        See Also
+        --------
+        subsets
+            To list the subsets keys.
+        """
+        if self.enable_layouts:
+            conventions = map(lambda l: l.conventions, self.layouts)
+            conventions = functools.reduce(lambda a, b: a + b, conventions)
+            fields = map(
+                lambda convention: {f.name for f in convention.fields}, conventions
+            )
+            field_names = functools.reduce(lambda a, b: a | b, fields)
+        else:
+            field_names = {
+                field.name for field in self.layouts[0].conventions[-1].fields
+            }
+
+        if filter_name not in field_names:
+            msg = (
+                f"Unknown filter name {filter_name}. Possible values are "
+                f"{field_names}"
+            )
+            raise ValueError(msg)
+
+        missing_partition_keys = set(self.unmixer.partition_keys) - set(kwargs.keys())
+        if (
+            filter_name not in self.unmixer.partition_keys
+            and len(self.subsets) > 1
+            and len(missing_partition_keys) > 0
+        ):
+            msg = (
+                "Cannot work on heterogenous datasets, subset should be chosen "
+                f"by providing the following filters: {self.unmixer.partition_keys} "
+                "(subsets can be displayed using the 'subsets' property)."
+            )
+            raise ValueError(msg)
+
+        if not self.enable_layouts:
+            msg = (
+                "Layouts are not enabled, full scan is necessary to deduce "
+                f"possible values of filter '{filter_name}'. Enable layouts to "
+                "improve performance."
+            )
+            warnings.warn(msg)
+            return set(self.list_files(**kwargs)[filter_name])
+
+        selected_layouts = []
+        for layout in self.layouts:
+            for ii, convention in enumerate(layout.conventions[:-1]):
+                # We could also handle a more complex case with a
+                # record containing multiple pieces of information. However, the
+                # current payload returned by the Visitors must be reviewed
+                # beforehand
+                if (
+                    len(convention.fields) == 1
+                    and convention.fields[0].name == filter_name
+                ):
+                    selected_layouts.append(Layout(layout.conventions[: ii + 1]))
+                    break
+
+        if len(selected_layouts) == 0:
+            msg = (
+                "Layouts do not contain intermediate nodes (directories) "
+                f"with information about filter '{filter_name}'. Falling back "
+                "to full scan to deduce the filters' possible values (the "
+                "performance is degraded)."
+            )
+            warnings.warn(msg)
+            return set(self.list_files(**kwargs)[filter_name])
+
+        metadata_collector = FileSystemMetadataCollector(
+            selected_layouts, self.discoverer.root_node
+        )
+
+        try:
+            return {x[0] for x in metadata_collector.discover(**kwargs)}
+        except LayoutMismatchError:
+            logger.info(
+                "Layouts are enabled and should contain information about "
+                "filter '%s' in their intermediate nodes. However,"
+                " the actual file organization does not match the layouts. "
+                "Falling back to full scan (the performance is degraded).",
+                filter_name,
+            )
+            return set(self.list_files(**kwargs)[filter_name])
+
+    @property
+    def subsets(self) -> list[dict[str, tp.Any]]:
+        """List of the subsets combinations."""
+        if self.unmixer is None:
+            return []
+        return list(self._subsets(0))
+
+    def _subsets(
+        self, current_index: int, **higher_partition_values: tp.Any
+    ) -> tp.Generator[dict[str, tp.Any], None, None]:
+        current_key = self.unmixer.partition_keys[current_index]
+        current_values = self._filter_values(current_key, **higher_partition_values)
+        for current_value in current_values:
+            result = copy(higher_partition_values)
+            result[current_key] = current_value
+            if current_index < len(self.unmixer.partition_keys) - 1:
+                yield from self._subsets(current_index + 1, **result)
+            else:
+                yield result
 
 
 @dc.dataclass
