@@ -48,6 +48,7 @@ Remote file system listing can be quite long. Implementations are usually
 shipped with layouts for an improved listing speed. See the
 {ref}`Layout <layout>` introduction if listing performance becomes an issue.
 
+(disable-layouts)=
 
 ## Disable layouts
 

@@ -31,7 +31,7 @@ if TYPE_CHECKING:  # pragma: no cover
 
 
 SWOT_L2_PATTERN = re.compile(
-    r"SWOT_(?P<level>.*)_LR_SSH_(?P<subset>.*)_(?P<cycle_number>\d{3})_(?P<pass_number>\d{3})_"
+    r"SWOT_L2_LR_SSH_(?P<subset>.*)_(?P<cycle_number>\d{3})_(?P<pass_number>\d{3})_"
     r"(?P<time>\d{8}T\d{6}_\d{8}T\d{6})_(?P<version>P[I|G][A-Z]\d{1}_\d{2}).nc"
 )
 
@@ -520,14 +520,11 @@ class FileNameConventionSwotL2(FileNameConvention):
                     "time", "%Y%m%dT%H%M%S", "_", description=DESCRIPTIONS["time"]
                 ),
                 FileNameFieldEnum(
-                    "level", ProductLevel, description=DESCRIPTIONS["level"]
-                ),
-                FileNameFieldEnum(
                     "subset", ProductSubset, description=DESCRIPTIONS["subset"]
                 ),
                 L2VersionField("version"),
             ],
-            generation_string="SWOT_{level!f}_LR_SSH_{subset!f}_{cycle_number:>03d}_{pass_number:>03d}_{time!f}_{version!f}.nc",
+            generation_string="SWOT_L2_LR_SSH_{subset!f}_{cycle_number:>03d}_{pass_number:>03d}_{time!f}_{version!f}.nc",
         )
 
 
@@ -544,17 +541,17 @@ _ADAPTED_L2_FIELD.ignore_product_counter = True
 AVISO_L2_LR_SSH_LAYOUT = Layout(
     [
         FileNameConvention(
-            re.compile(r"(?P<version>P[I|G][A-Z]\d{1})"),
+            re.compile(r"^(?P<version>P[I|G][A-Z]\d{1})$"),
             [_ADAPTED_L2_FIELD],
             "{version!f}",
         ),
         FileNameConvention(
-            re.compile(r"(?P<subset>.*)"),
+            re.compile(r"^(?P<subset>.*)$"),
             [FileNameConventionSwotL2().get_field("subset")],
             "{subset!f}",
         ),
         FileNameConvention(
-            re.compile(r"cycle_(?P<cycle_number>\d{3})"),
+            re.compile(r"^cycle_(?P<cycle_number>\d{3})$"),
             [FileNameConventionSwotL2().get_field("cycle_number")],
             "cycle_{cycle_number:0>3d}",
         ),
@@ -572,7 +569,7 @@ class BasicNetcdfFilesDatabaseSwotLRL2(FilesDatabase, PeriodMixin):
     sort_keys = "time"
 
     # These keys determines an homogeneous subset
-    unmixer = SubsetsUnmixer(partition_keys=["level", "subset"])
+    unmixer = SubsetsUnmixer(partition_keys=["subset"])
     # We expect multiple versions in an homogeneous subset. Only one half orbit
     # record is tolerated so we deduplicate the multiple version with an
     # autopick

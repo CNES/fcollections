@@ -49,6 +49,14 @@ def test_file_node_no_children():
     assert len(node.children()) == 0
 
 
+def test_dir_node_clear():
+    node = DirNode("foo", {"name": "foo"}, MemoryFileSystem(), 0)
+    node.children()
+    assert node._children is not None
+    node.clear()
+    assert node._children is None
+
+
 @pytest.fixture(scope="session")
 def filepaths() -> list[str]:
     # The files that we will use to test the listing and filtering using the

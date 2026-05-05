@@ -264,6 +264,10 @@ class INode(abc.ABC):
             The child nodes, either files or folders
         """
 
+    @abc.abstractmethod
+    def clear(self):
+        """Clear child nodes."""
+
 
 class FileNode(INode):
     """File node of a file system tree."""
@@ -280,6 +284,9 @@ class FileNode(INode):
             An empty list (files have no children)
         """
         return []
+
+    def clear(self):
+        pass
 
 
 class DirNode(INode):
@@ -325,6 +332,9 @@ class DirNode(INode):
         if self._children is None:
             self._children = list(self._compute_children())
         return self._children
+
+    def clear(self):
+        self._children = None
 
     def _compute_children(self) -> tp.Iterator[INode]:
         # return list of FileNode or DirNode instances
@@ -798,6 +808,7 @@ def walk(node: INode, visitor: IVisitor) -> tp.Iterator[tp.Any]:
         return
 
     for child in node.children():
+        logger.debug("child %s", child.name)
         yield from walk(child, visitor.advance(result))
 
 
@@ -929,6 +940,7 @@ class FileSystemMetadataCollector:
             # to modify the Layout interface
             layout.set_filters(**filters)
 
+        self.root_node.clear()
         if enable_layouts:
             logger.debug("Using layouts to speed up listing")
             visitor = LayoutVisitor(self.layouts, stat_fields)
