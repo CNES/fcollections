@@ -49,6 +49,12 @@ def test_file_node_no_children():
     assert len(node.children()) == 0
 
 
+def test_file_no_clear():
+    # No effect
+    node = FileNode("foo", {}, 0)
+    node.clear()
+
+
 def test_dir_node_clear():
     node = DirNode("foo", {"name": "foo"}, MemoryFileSystem(), 0)
     node.children()
