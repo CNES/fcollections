@@ -17,6 +17,7 @@ from fcollections.core import (
 
 from ._definitions._constants import DESCRIPTIONS, ProductLevel
 from ._definitions._swot import ProductSubset, Temporality
+from ._predicates import SwotPhasePredicate
 from ._readers import SwotReaderL3LRSSH
 
 SWOT_L3_PATTERN = re.compile(
@@ -129,6 +130,9 @@ class BasicNetcdfFilesDatabaseSwotLRL3(FilesDatabase, PeriodMixin):
         partition_keys=["version", "subset"], auto_pick_last=("version",)
     )
 
+    # Convert phase filter to cycle_numbers filter
+    predicate_classes = [SwotPhasePredicate]
+
 
 try:
     from fcollections.implementations.optional import (
@@ -138,7 +142,7 @@ try:
 
     class NetcdfFilesDatabaseSwotLRL3(BasicNetcdfFilesDatabaseSwotLRL3):
         reader = GeoSwotReaderL3LRSSH()
-        predicate_classes = [SwotGeometryPredicate]
+        predicate_classes = [SwotGeometryPredicate, SwotPhasePredicate]
 
 except ImportError:
     import logging

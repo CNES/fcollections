@@ -16,6 +16,7 @@ from fcollections.implementations import (
     ProductLevel,
     ProductSubset,
     StackLevel,
+    SwotPhases,
     SwotReaderL2LRSSH,
     Timeliness,
 )
@@ -465,6 +466,35 @@ class TestListing:
             ),
             ({"subset": ProductSubset.Unsmoothed}, [(10, 4)]),
             ({"version": L2Version(baseline="A")}, [(577, 18)]),
+            (
+                {"phase": SwotPhases.CALVAL},
+                [
+                    (577, 18),
+                    (546, 11),
+                    (546, 18),
+                    (577, 11),
+                    (577, 18),
+                    (482, 11),
+                    (482, 12),
+                    (482, 25),
+                    (482, 26),
+                    (483, 25),
+                    (483, 26),
+                    (546, 18),
+                    (546, 18),
+                ],
+            ),
+            (
+                {"phase": SwotPhases.SCIENCE},
+                [
+                    (6, 11),
+                    (6, 532),
+                    (6, 533),
+                    (7, 532),
+                    (7, 533),
+                    (10, 4),
+                ],
+            ),
         ],
     )
     def test_list(

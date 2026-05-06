@@ -22,8 +22,9 @@ from fcollections.core import (
     SubsetsUnmixer,
 )
 
-from ._definitions._constants import DESCRIPTIONS, ProductLevel
+from ._definitions._constants import DESCRIPTIONS
 from ._definitions._swot import ProductSubset
+from ._predicates import SwotPhasePredicate
 from ._readers import SwotReaderL2LRSSH
 
 if TYPE_CHECKING:  # pragma: no cover
@@ -577,6 +578,9 @@ class BasicNetcdfFilesDatabaseSwotLRL2(FilesDatabase, PeriodMixin):
         unique=("cycle_number", "pass_number"), auto_pick_last=("version",)
     )
 
+    # Convert phase filter to cycle_numbers filter
+    predicate_classes = [SwotPhasePredicate]
+
 
 try:
     from fcollections.implementations.optional import (
@@ -586,7 +590,7 @@ try:
 
     class NetcdfFilesDatabaseSwotLRL2(BasicNetcdfFilesDatabaseSwotLRL2):
         reader = GeoSwotReaderL2LRSSH()
-        predicate_classes = [SwotGeometryPredicate]
+        predicate_classes = [SwotGeometryPredicate, SwotPhasePredicate]
 
 except ImportError:
     import logging

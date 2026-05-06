@@ -20,6 +20,7 @@ from fcollections.implementations import (
     ProductLevel,
     ProductSubset,
     StackLevel,
+    SwotPhases,
     SwotReaderL3LRSSH,
     Temporality,
 )
@@ -467,6 +468,26 @@ class TestListing:
             (
                 {"version": "2.0.1"},
                 [(532, 25), (532, 26), (533, 25), (533, 26), (10, 532)],
+            ),
+            (
+                {"phase": SwotPhases.CALVAL},
+                [
+                    (531, 25),
+                    (531, 26),
+                    (532, 25),
+                    (532, 26),
+                    (532, 25),
+                    (532, 25),
+                    (532, 26),
+                    (533, 25),
+                    (533, 26),
+                ],
+            ),
+            (
+                {"phase": SwotPhases.SCIENCE},
+                [
+                    (10, 532),
+                ],
             ),
         ],
     )

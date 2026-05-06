@@ -14,6 +14,7 @@ from fcollections.implementations import (
     NetcdfFilesDatabaseSwotLRWW,
     ProductLevel,
     ProductSubset,
+    SwotPhases,
     SwotReaderL3WW,
 )
 from fcollections.time import Period
@@ -270,6 +271,65 @@ class TestReader:
                 tile=10,
                 box=40,
             )
+
+
+class TestListing:
+
+    @pytest.mark.parametrize(
+        "query, half_orbits",
+        [
+            (
+                {},
+                [
+                    (482, 11),
+                    (482, 12),
+                    (10, 10),
+                ],
+            ),
+            (
+                {"cycle_number": [482]},
+                [(482, 11), (482, 12)],
+            ),
+            ({"pass_number": [10]}, [(10, 10)]),
+            (
+                {
+                    "time": (
+                        np.datetime64("2024-01-25T03"),
+                        np.datetime64("2024-01-25T03:30"),
+                    )
+                },
+                [(10, 10)],
+            ),
+            (
+                {"subset": ProductSubset.Light},
+                [(482, 11), (482, 12)],
+            ),
+            (
+                {"version": "2.0"},
+                [(482, 11), (482, 12)],
+            ),
+            ({"phase": SwotPhases.CALVAL}, [(482, 11), (482, 12)]),
+            (
+                {"phase": SwotPhases.SCIENCE},
+                [
+                    (10, 10),
+                ],
+            ),
+        ],
+    )
+    def test_list(
+        self,
+        l3_lr_ww_dir_layout: Path,
+        query: dict[str, tp.Any],
+        half_orbits: list[tuple[int, int]],
+    ):
+
+        db = NetcdfFilesDatabaseSwotLRWW(l3_lr_ww_dir_layout)
+        files = db.list_files(**query, sort=True)
+        actual_half_orbits = sorted(
+            [tuple(x) for x in files[["cycle_number", "pass_number"]].to_numpy()]
+        )
+        assert actual_half_orbits == sorted(half_orbits)
 
 
 class TestQuery:
