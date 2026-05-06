@@ -12,25 +12,33 @@ logger = logging.getLogger(__name__)
 
 
 class SwotGeometryFilterBuilder(IFilterBuilder):
-    """Predicate builder for swot karin footprints.
-
-    This predicate builder can transform a box in a callable that can predict if
-    a given half orbit crosses the box. It uses KaRIn reference footprints for
-    one cycle.
-
-    Parameters
-    ----------
-    indexes
-        Indexes of the 'cycle_number' and 'pass_number' element in the input
-        record of the predicate
-    bbox
-        Bounding box, given as lon_min, lat_min, lon_max, lat_max
-    """
+    """Predicate builder for swot karin footprints."""
 
     @classmethod
     def build_predicate(
-        cls, record_indexes: dict[str, int], bbox: tuple[float, float, float, float]
+        cls, record_mapping: dict[str, int], bbox: tuple[float, float, float, float]
     ) -> tp.Callable[[tuple[tp.Any, ...]], bool]:
+        """Build a complex predicate.
+
+        This predicate builder can transform a ``bbox`` filter in a callable
+        that can predict if a given half orbit crosses the box. It uses KaRIn
+        reference footprints (reference footprints are the same across cycles).
+
+        Parameters
+        ----------
+        record_mapping
+            Mapping between the record names and indexes. Records are given
+            as a tuple to the predicate, so we need the index to extract the
+            given fields.
+        bbox
+            Bounding box, given as lon_min, lat_min, lon_max, lat_max
+
+        Returns
+        -------
+        Callable
+            A predicate that checks whether the input record half orbit is in
+            the bounding box.
+        """
 
         def selected(
             cycle_number: int,
@@ -63,8 +71,8 @@ class SwotGeometryFilterBuilder(IFilterBuilder):
                 )
             )
 
-        cycle_number_index = record_indexes["cycle_number"]
-        pass_number_index = record_indexes["pass_number"]
+        cycle_number_index = record_mapping["cycle_number"]
+        pass_number_index = record_mapping["pass_number"]
 
         def _predicate(record: tuple[tp.Any, ...]) -> bool:
             cycle_number, pass_number = (

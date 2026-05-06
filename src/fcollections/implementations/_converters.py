@@ -15,11 +15,17 @@ class SwotPhaseFilterBuilder(IFilterBuilder):
 
     @classmethod
     def build_filter(cls, phase: SwotPhases) -> dict[str, slice]:
-        """
+        """Converts a ``phase`` filter to a ``cycle_number``.
+
         Parameters
         ----------
         phase
             SWOT mission phase (calval or science).
+
+        Returns
+        -------
+        dict[str, tp.Any]
+            Mapping associating the filter name to its authorized values.
         """
         phase: Phase = MissionsPhases[phase.name.lower()].value
         return {
