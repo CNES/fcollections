@@ -270,33 +270,6 @@ def test_unmixing_manual_pick(df_with_duplicates: pda.DataFrame):
     assert df.equals(df_with_duplicates[subset])
 
 
-def test_unmixing_callable(df_with_duplicates: pda.DataFrame):
-    """Use a callable to transform the columns prior to auto pick."""
-    unmixer = SubsetsUnmixer(
-        partition_keys=("version", "product"), auto_pick_last=("product", "version")
-    )
-    df = unmixer(df_with_duplicates)
-    subset = (df_with_duplicates["version"] == "v1") & (
-        df_with_duplicates["product"] == "Unsmoothed"
-    )
-    assert df.equals(df_with_duplicates[subset])
-
-    # We reverse the product column sort internally -> selecting Expert instead
-    # of Unsmoothed
-    unmixer = SubsetsUnmixer(
-        partition_keys={
-            "version": None,
-            "product": lambda x: 1 if x == "Expert" else 0,
-        },
-        auto_pick_last=("product", "version"),
-    )
-    df = unmixer(df_with_duplicates)
-    subset = (df_with_duplicates["version"] == "v2") & (
-        df_with_duplicates["product"] == "Expert"
-    )
-    assert df.equals(df_with_duplicates[subset])
-
-
 @pytest.fixture(scope="session")
 def db_with_files() -> FilesDatabaseTest:
     fs = fs_mem.MemoryFileSystem()

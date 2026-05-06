@@ -863,38 +863,67 @@ class FilesDatabase(metaclass=FilesDatabaseMeta):
 
 @dc.dataclass
 class SubsetsUnmixer:
-    partition_keys: tuple[str, ...] | dict[str, tp.Callable | None]
+    """Subset unmixing.
+
+    In case multiple subsets are present, this class can be used to
+    enforce an auto pick for some pre-configured keys. The second role
+    of this class is to enforce that only one subset is present at a
+    time. An error will be raised if the auto picks cannot reduce the
+    number of subsets to 1.
+    """
+
+    partition_keys: tuple[str, ...]
+    """Partitioning keys for subsets."""
     auto_pick_last: tuple[str, ...] = dc.field(default_factory=tuple)
+    """Auto picked keys for subset selection.
+
+    The auto picked keys are used to select one subset amongst multiple
+    choices. The keys must sortable so that the last element is chosen.
+    """
+
+    def __post_init__(self):
+        not_partition_keys = set(self.auto_pick_last) - set(self.partition_keys)
+        if len(not_partition_keys) > 0:
+            msg = (
+                "Auto pick keys should be partitioning keys: "
+                f"{not_partition_keys} are not partitioning keys"
+            )
+            raise ValueError(msg)
 
     def __call__(self, df: pda.DataFrame) -> pda.DataFrame:
+        """Auto pick a subset in the input dataframe.
+
+        Parameters
+        ----------
+        df
+            The input dataframe with possibly multiple subsets.
+
+        Raises
+        ------
+        ValueError
+            In case the auto pick does not reduce the number of subsets to 1.
+
+        Returns
+        -------
+        pandas.DataFrame
+            The reduced dataframe with only one subset.
+        """
         if len(df) == 0:
             return df
 
-        try:
-            subsets = df.groupby(
-                [
-                    (
-                        df[partition_key].apply(transform)
-                        if transform is not None
-                        else df[partition_key]
-                    )
-                    for partition_key, transform in self.partition_keys.items()
-                ]
-            )
-        except AttributeError:
-            # We have a tuple
-            grouping_keys = list(self.partition_keys)
-            subsets = df.groupby(
-                # In pandas 2, a list with one single element gave a scalar keys
-                # for the groups. In pandas 3, a future warning is raised,
-                # asking to give either a single key or a list with more than
-                # one key
-                grouping_keys if len(grouping_keys) > 1 else grouping_keys[0],
-                # Pandas 3 tries to sort the groups, which can raise an error if
-                # a column cannot be ordered. We don't need this sort so we
-                # disable it
-                sort=False,
-            )
+        # We have a tuple
+        grouping_keys = list(self.partition_keys)
+        subsets = df.groupby(
+            # In pandas 2, a list with one single element gave a scalar keys
+            # for the groups. In pandas 3, a future warning is raised,
+            # asking to give either a single key or a list with more than
+            # one key
+            grouping_keys if len(grouping_keys) > 1 else grouping_keys[0],
+            # Pandas 3 tries to sort the groups, which can raise an error if
+            # a column cannot be ordered. We don't need this sort so we
+            # disable it
+            sort=False,
+        )
 
         # Pick one subset using panda duplicate handling
         subset_names = [
@@ -936,7 +965,12 @@ class SubsetsUnmixer:
 
     @property
     def keys(self) -> set[str]:
-        return set(self.partition_keys) | set(self.auto_pick_last)
+        """Alias for the partition keys.
+
+        Used by ``FilesDatabase`` to compare different class to the declared
+        fields in the layouts.
+        """
+        return set(self.partition_keys)
 
 
 @dc.dataclass
