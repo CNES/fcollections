@@ -18,6 +18,7 @@ from ._filenames import (
     FileNameFieldDatetime,
     FileNameFieldEnum,
     FileNameFieldFloat,
+    FileNameFieldGeoBox,
     FileNameFieldInteger,
     FileNameFieldISODuration,
     FileNameFieldPeriod,
@@ -26,7 +27,7 @@ from ._filenames import (
 from ._filesdb import (
     Deduplicator,
     FilesDatabase,
-    IPredicate,
+    IFilterBuilder,
     NotExistingPathError,
     SubsetsUnmixer,
 )
@@ -74,6 +75,7 @@ __all__ = [
     "FileNameFieldString",
     "FileNameFieldPeriod",
     "FileNameFieldISODuration",
+    "FileNameFieldGeoBox",
     "FileNameConvention",
     "FileListingError",
     "IFilesReader",
@@ -93,7 +95,7 @@ __all__ = [
     "VariableMetadata",
     "DiscreteTimesMixin",
     "ITemporalMixin",
-    "IPredicate",
+    "IFilterBuilder",
     "Layout",
     "DecodingError",
     "ICodec",

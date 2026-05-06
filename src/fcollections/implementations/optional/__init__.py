@@ -17,7 +17,7 @@ from ._area_selectors import (
     SwathAreaSelector,
     TemporalSerieAreaSelector,
 )
-from ._predicates import SwotGeometryPredicate
+from ._predicates import SwotGeometryFilterBuilder
 from ._reader import (
     GeoOpenMfDataset,
     GeoSwotReaderL2LRSSH,
@@ -30,7 +30,7 @@ __all__ = [
     "GeoSwotReaderL3WW",
     "GeoSwotReaderL2LRSSH",
     "GeoSwotReaderL3LRSSH",
-    "SwotGeometryPredicate",
+    "SwotGeometryFilterBuilder",
     "AreaSelector1D",
     "AreaSelector2D",
     "SwathAreaSelector",

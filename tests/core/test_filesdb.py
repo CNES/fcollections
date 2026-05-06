@@ -15,12 +15,13 @@ import xarray as xr
 from fcollections.core import (
     Deduplicator,
     FileNameConvention,
+    FileNameField,
     FileNameFieldDatetime,
     FileNameFieldInteger,
     FileNameFieldString,
     FilesDatabase,
     IFilesReader,
-    IPredicate,
+    IFilterBuilder,
     Layout,
     LayoutMismatchError,
     NotExistingPathError,
@@ -99,26 +100,47 @@ class FilesDatabaseTest(FilesDatabaseTestNoUnmixer):
     unmixer = SubsetsUnmixer(("a_number",))
 
 
-class ModuloPredicate(IPredicate):
-
-    def __init__(self, indexes: tuple[int], b_number: int):
-        self.index = indexes[0]
-        self.b_number = b_number
-
-    def __call__(self, record: tuple[tp.Any, ...]) -> bool:
-        return record[self.index] % self.b_number == 0
+class ModuloFilterBuilder(IFilterBuilder):
 
     @classmethod
-    def record_fields(cls) -> tuple[str, ...]:
-        return ("a_number",)
+    def build_predicate(
+        cls, record_mapping: dict[str, int], b_number: int
+    ) -> tp.Callable:
+        index = record_mapping["a_number"]
+
+        def _predicate(record: tuple[tp.Any, ...]) -> bool:
+            return record[index] % b_number == 0
+
+        return _predicate
 
     @classmethod
-    def parameters(cls) -> tuple[str, ...]:
-        return ("b_number",)
+    def build_filter(cls, *args):
+        raise NotImplementedError()
+
+    @classmethod
+    def parameter(cls) -> FileNameField:
+        return FileNameFieldInteger("b_number")
+
+
+class RangeFilterBuilder(IFilterBuilder):
+
+    @classmethod
+    def build_filter(cls, c_number: int) -> dict[str, list[int]]:
+        return {"a_number": list(range(0, 100, c_number))}
+
+    @classmethod
+    def build_predicate(
+        cls, record_mapping: dict[str, int], _number: int
+    ) -> tp.Callable:
+        raise NotImplementedError()
+
+    @classmethod
+    def parameter(cls) -> FileNameField:
+        return FileNameFieldInteger("c_number")
 
 
 class FilesDatabaseTestPredicate(FilesDatabaseTestNoUnmixer):
-    predicate_classes = [ModuloPredicate]
+    filter_builders = [ModuloFilterBuilder, RangeFilterBuilder]
 
 
 def test_bad_path():
@@ -339,7 +361,7 @@ def test_list_files_wrong_filter(db_with_files: FilesDatabaseTest):
 
 
 @pytest.fixture(scope="session")
-def db_predicate() -> FilesDatabaseTestPredicate:
+def db_predicate_converter() -> FilesDatabaseTestPredicate:
     fs = fs_mem.MemoryFileSystem()
     fs.touch("predicate/a_file_001_20250101.nc")
     fs.touch("predicate/a_file_002_20250101.nc")
@@ -349,8 +371,13 @@ def db_predicate() -> FilesDatabaseTestPredicate:
     return db
 
 
-def test_list_files_predicate(
-    db_with_files: FilesDatabaseTest, db_predicate: FilesDatabaseTestPredicate
+@pytest.mark.parametrize(
+    "filters", [dict(b_number=2), dict(c_number=2)], ids=["predicate", "converter"]
+)
+def test_list_files_filter_builders(
+    db_with_files: FilesDatabaseTest,
+    db_predicate_converter: FilesDatabaseTestPredicate,
+    filters: dict[str, int],
 ):
     expected = pda.DataFrame(
         [
@@ -362,13 +389,20 @@ def test_list_files_predicate(
 
     with pytest.raises(ValueError):
         # Predicate parameter is unknown in DB not setup properly
-        assert db_with_files.list_files(b_number=2)
+        assert db_with_files.list_files(**filters)
 
     # We should have applied a 'modulo' filter using the b_number argument
-    assert expected.equals(db_predicate.list_files(b_number=2))
+    assert expected.equals(db_predicate_converter.list_files(**filters))
 
     # Auto predicate will not be built
-    assert expected.equals(db_predicate.list_files(a_number=[2, 4]))
+    assert expected.equals(db_predicate_converter.list_files(a_number=[2, 4]))
+
+
+def test_list_files_filter_builders_error(
+    db_predicate_converter: FilesDatabaseTestPredicate,
+):
+    with pytest.raises(ValueError, match="Incompatible"):
+        db_predicate_converter.list_files(a_number=[2, 4], c_number=2)
 
 
 def test_query_empty(db_with_files: FilesDatabaseTest):

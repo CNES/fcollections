@@ -27,6 +27,7 @@ from ._testers import (
     DateTimeTester,
     EnumTester,
     FloatTester,
+    GeoBoxTester,
     IntegerTester,
     ITester,
     PeriodTester,
@@ -255,6 +256,18 @@ class FileNameFieldISODuration(FileNameField, ISODurationCodec):
         if isinstance(reference, str):
             return self.decode(reference)
         return reference
+
+
+class FileNameFieldGeoBox(FileNameField, StringCodec, GeoBoxTester):
+    """Geobox value.
+
+    Geobox is a tuple (lon_min, lat_min, lon_max, lat_max) in °.
+
+    Attributes
+    ----------
+    name: str
+        name of the field
+    """
 
 
 class FieldFormatter(string.Formatter):

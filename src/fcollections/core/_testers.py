@@ -243,6 +243,35 @@ class PeriodTester(ITester[Period | np.datetime64, Period]):
         return Period
 
 
+GeoBox: tp.TypeAlias = tuple[float, float, float, float]
+
+
+class GeoBoxTester(ITester[GeoBox, GeoBox]):
+
+    @property
+    def test_description(self) -> str:
+        return (
+            "As a GeoBox field, it can be filtered by giving a reference "
+            "GeoBox. A file will be filtered out if the GeoBox extracted from "
+            "its file name does not intersect the reference GeoBox."
+        )
+
+    def test(self, reference: GeoBox, tested: GeoBox) -> bool:
+        longitude_match = (reference[0] <= tested[0] <= reference[2]) or (
+            reference[0] <= tested[2] <= reference[2]
+        )
+
+        latitude_match = (reference[1] <= tested[1] <= reference[3]) or (
+            reference[1] <= tested[3] <= reference[3]
+        )
+
+        return longitude_match and latitude_match
+
+    @property
+    def type(self) -> type[GeoBox]:
+        return GeoBox
+
+
 def _sanitize_time(
     reference: (
         tuple[str | None | np.datetime64, str | None | np.datetime64]

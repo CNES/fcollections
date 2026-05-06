@@ -66,29 +66,48 @@ jobs:
         shell: bash -l {0}
         run: |
           pip install altimetry-downloader-aviso
-      - name: Restore cached sample data
-        uses: actions/cache@v4
-        id: restore_samples
-        with:
-          path: docs/implementations/data
-          key: samples-${{ hashFiles('docs/implementations/scripts/pull_data*.py') }}
       - name: Setup AVISO credentials
-        if: steps.restore_samples.outputs['cache-hit'] != 'true'
         run: |
           echo "machine tds-odatis.aviso.altimetry.fr login ${{ secrets.AVISO_USER }} password ${{ secrets.AVISO_PASSWORD }}" > ~/.netrc
-      - name: Pull Samples
-        if: steps.restore_samples.outputs['cache-hit'] != 'true'
+      # Cached retrieval of L2_LR_SSH data
+      - name: Restore cached sample data for L2_LR_SSH
+        uses: actions/cache@v4
+        id: restore_samples_l2_lr_ssh
+        with:
+          path: docs/implementations/data_l2_lr_ssh
+          key: samples-${{ hashFiles('docs/implementations/scripts/pull_data_l2_lr_ssh.py') }}
+      - name: Pull L2_LR_SSH Samples
+        if: steps.restore_samples_l2_lr_ssh.outputs['cache-hit'] != 'true'
         shell: bash -l {0}
         run: |
           set -e
           python docs/implementations/scripts/pull_data_l2_lr_ssh.py
-          python docs/implementations/scripts/pull_data_l3_lr_ssh.py
-      - name: Save fetched data
+      - name: Cache L2_LR_SSH data
         uses: actions/cache/save@v4
-        if: steps.restore_samples.outputs['cache-hit'] != 'true'
+        if: steps.restore_samples_l2_lr_ssh.outputs['cache-hit'] != 'true'
         with:
-          path: docs/implementations/data
-          key: samples-${{ hashFiles('docs/implementations/scripts/pull_data*.py') }}
+          path: docs/implementations/data_l2_lr_ssh
+          key: samples-${{ hashFiles('docs/implementations/scripts/pull_data_l2_lr_ssh.py') }}
+      # Cached retrieval of L3_LR_SSH data
+      - name: Restore cached sample data for L3_LR_SSH
+        uses: actions/cache@v4
+        id: restore_samples_l3_lr_ssh
+        with:
+          path: docs/implementations/data_l3_lr_ssh
+          key: samples-${{ hashFiles('docs/implementations/scripts/pull_data_l3_lr_ssh.py') }}
+      - name: Pull L3_LR_SSH Samples
+        if: steps.restore_samples_l3_lr_ssh.outputs['cache-hit'] != 'true'
+        shell: bash -l {0}
+        run: |
+          set -e
+          python docs/implementations/scripts/pull_data_l3_lr_ssh.py
+      - name: Cache L3_LR_SSH data
+        uses: actions/cache/save@v4
+        if: steps.restore_samples_l3_lr_ssh.outputs['cache-hit'] != 'true'
+        with:
+          path: docs/implementations/data_l3_lr_ssh
+          key: samples-${{ hashFiles('docs/implementations/scripts/pull_data_l3_lr_ssh.py') }}
+      # DOC BUILD
       - name: Build Sphinx HTML
         shell: bash -l {0}
         run: |

@@ -2,6 +2,7 @@ from fcollections.core import Layout
 
 __all__ = []
 
+from ._converters import SwotPhaseFilterBuilder
 from ._dac import (
     BasicNetcdfFilesDatabaseDAC,
     FileNameConventionDAC,
@@ -193,6 +194,8 @@ __all__ = [
     "SwotReaderL2LRSSH",
     "SwotReaderL3LRSSH",
     "SwotReaderL3WW",
+    # Predicates
+    "SwotPhaseFilterBuilder",
     # Common definitions
     "Delay",
     "ProductLevel",
