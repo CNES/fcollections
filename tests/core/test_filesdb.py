@@ -3,6 +3,7 @@ from __future__ import annotations
 import re
 import sys
 import typing as tp
+from contextlib import nullcontext
 from pathlib import Path
 
 import dask
@@ -47,11 +48,6 @@ class FileNameConventionTest(FileNameConvention):
 class FilesDatabaseTestInconsistentDeduplicator(FilesDatabase):
     layouts = [Layout([FileNameConventionTest()])]
     deduplicator = Deduplicator(("a1",), ("a2",))
-
-
-class FilesDatabaseTestInconsistentUnmixer(FilesDatabase):
-    layouts = [Layout([FileNameConventionTest()])]
-    unmixer = SubsetsUnmixer(("a1",), ("a2",))
 
 
 class ReaderStub(IFilesReader):
@@ -205,8 +201,8 @@ def test_deduplicator_empty():
 
 
 def test_unmixer_inconsistent(tmpdir: Path):
-    with pytest.raises(ValueError, match="Subsets Unmixer"):
-        FilesDatabaseTestInconsistentUnmixer(tmpdir)
+    with pytest.raises(ValueError, match="are not partitioning"):
+        SubsetsUnmixer(("a1",), ("a2",))
 
 
 @pytest.mark.parametrize(
@@ -237,6 +233,55 @@ def test_unmixing_empty():
     assert len(unmixer(pda.DataFrame(columns=("version", "product")))) == 0
 
 
+@pytest.fixture(scope="session")
+def subsets() -> list[dict[str, str]]:
+    return [
+        {"version": "v1", "product": "B"},
+        {"version": "v1", "product": "C"},
+        {"version": "v2", "product": "A"},
+        {"version": "v2", "product": "B"},
+    ]
+
+
+@pytest.mark.parametrize(
+    "context, auto_pick, subset_filters, expected",
+    [
+        (nullcontext(), ("version", "product"), {}, {"version": "v2", "product": "B"}),
+        (nullcontext(), ("product", "version"), {}, {"version": "v1", "product": "C"}),
+        (pytest.raises(ValueError, match="not be unmixed"), ("version",), {}, None),
+        (
+            nullcontext(),
+            ("version",),
+            {"product": "B"},
+            {"version": "v2", "product": "B"},
+        ),
+    ],
+)
+def test_unmixing_auto_pick_subset(
+    subsets: list[dict[str, str]],
+    context,
+    auto_pick: tuple[str, ...],
+    subset_filters: dict[str, str],
+    expected: dict[str, str],
+):
+
+    unmixer = SubsetsUnmixer(
+        partition_keys=("version", "product"), auto_pick_last=auto_pick
+    )
+
+    with context:
+        subset = unmixer.pick_subset(subsets, **subset_filters)
+        assert subset == expected
+
+
+def test_unmixing_auto_pick_subset_no_unmix(subsets: list[dict[str, str]]):
+
+    unmixer = SubsetsUnmixer(
+        partition_keys=("version", "product"), auto_pick_last=tuple()
+    )
+    assert unmixer.pick_subset(subsets[:1]) == subsets[0]
+
+
 @pytest.mark.parametrize(
     "auto_pick, group_names",
     [
@@ -244,7 +289,7 @@ def test_unmixing_empty():
         (("version", "product"), ("v2", "Expert")),
     ],
 )
-def test_unmixing_auto_pick(
+def test_unmixing_auto_pick_dataframe(
     df_with_duplicates: pda.DataFrame,
     auto_pick: tuple[str, str],
     group_names: tuple[str, str],

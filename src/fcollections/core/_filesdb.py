@@ -870,6 +870,11 @@ class SubsetsUnmixer:
     of this class is to enforce that only one subset is present at a
     time. An error will be raised if the auto picks cannot reduce the
     number of subsets to 1.
+
+    Raises
+    ------
+    ValueError
+        If the auto_pick keys are not partitioning keys.
     """
 
     partition_keys: tuple[str, ...]
@@ -890,13 +895,18 @@ class SubsetsUnmixer:
             )
             raise ValueError(msg)
 
-    def __call__(self, df: pda.DataFrame) -> pda.DataFrame:
-        """Auto pick a subset in the input dataframe.
+    def pick_subset(
+        self, subsets: list[dict[str, tp.Any]], **subset_filters: tp.Any
+    ) -> dict[str, tp.Any]:
+        """Manual and auto pick a subset amongst multiple choices.
 
         Parameters
         ----------
-        df
-            The input dataframe with possibly multiple subsets.
+        subsets
+            List of subsets given as mapping between the partitioning keys and
+            their values.
+        subset_filters
+            Manual values for filtering the subsets.
 
         Raises
         ------
@@ -905,34 +915,25 @@ class SubsetsUnmixer:
 
         Returns
         -------
-        pandas.DataFrame
-            The reduced dataframe with only one subset.
+        dict[str, tp.Any]
+            The automatically selected subset.
         """
-        if len(df) == 0:
-            return df
-
-        # We have a tuple
-        grouping_keys = list(self.partition_keys)
-        subsets = df.groupby(
-            # In pandas 2, a list with one single element gave a scalar keys
-            # for the groups. In pandas 3, a future warning is raised,
-            # asking to give either a single key or a list with more than
-            # one key
-            grouping_keys if len(grouping_keys) > 1 else grouping_keys[0],
-            # Pandas 3 tries to sort the groups, which can raise an error if
-            # a column cannot be ordered. We don't need this sort so we
-            # disable it
-            sort=False,
+        logger.debug("%s subsets before manual pick", len(subsets))
+        subsets_filtered = list(
+            filter(
+                lambda subset: all(
+                    [
+                        (item[0] not in subset_filters)
+                        or (item[1] == subset_filters[item[0]])
+                        for item in subset.items()
+                    ]
+                ),
+                subsets,
+            )
         )
+        logger.debug("%s subsets after manual pick", len(subsets_filtered))
 
-        # Pick one subset using panda duplicate handling
-        subset_names = [
-            (group,) if len(self.partition_keys) == 1 else group
-            for group in subsets.groups.keys()
-        ]
-        df_subsets = pda.DataFrame.from_records(
-            subset_names, columns=self.partition_keys
-        )
+        df_subsets = pda.DataFrame.from_records(subsets_filtered)
 
         # Sort the dataframe containing the subset using the auto_pick_last keys
         # Unique records of manual_pick keys will be chosen relying on this sort
@@ -958,10 +959,59 @@ class SubsetsUnmixer:
                 )
                 raise ValueError(msg)
 
-        group_name = tuple(df_subsets.to_records(index=False)[-1])
-        group_name = group_name if len(group_name) > 1 else group_name[0]
-        logger.debug("Subset selected %s", group_name)
-        return subsets.get_group(group_name)
+        subset = df_subsets.iloc[-1].to_dict()
+        logger.info("Picked subset %s", subset)
+        return subset
+
+    def __call__(self, df: pda.DataFrame) -> pda.DataFrame:
+        """Auto pick a subset in the input dataframe.
+
+        Parameters
+        ----------
+        df
+            The input dataframe with possibly multiple subsets.
+
+        Raises
+        ------
+        ValueError
+            In case the auto pick does not reduce the number of subsets to 1.
+
+        Returns
+        -------
+        pandas.DataFrame
+            The reduced dataframe with only one subset.
+        """
+        if len(df) == 0:
+            return df
+
+        # We have a tuple
+        grouping_keys = list(self.partition_keys)
+        df_grouped = df.groupby(
+            # In pandas 2, a list with one single element gave a scalar keys
+            # for the groups. In pandas 3, a future warning is raised,
+            # asking to give either a single key or a list with more than
+            # one key
+            grouping_keys if len(grouping_keys) > 1 else grouping_keys[0],
+            # Pandas 3 tries to sort the groups, which can raise an error if
+            # a column cannot be ordered. We don't need this sort so we
+            # disable it
+            sort=False,
+        )
+
+        # Pick one subset using panda duplicate handling
+        subsets = [
+            (
+                dict(zip(grouping_keys, group))
+                if len(grouping_keys) > 1
+                else {grouping_keys[0]: group}
+            )
+            for group in df_grouped.groups
+        ]
+        subset = self.pick_subset(subsets)
+
+        group_name = tuple(subset[k] for k in grouping_keys)
+        group_name = group_name if len(subset) > 1 else group_name[0]
+        return df_grouped.get_group(group_name)
 
     @property
     def keys(self) -> set[str]:
