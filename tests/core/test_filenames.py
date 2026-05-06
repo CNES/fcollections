@@ -17,6 +17,7 @@ from fcollections.core import (
     FileNameFieldDatetime,
     FileNameFieldEnum,
     FileNameFieldFloat,
+    FileNameFieldGeoBox,
     FileNameFieldInteger,
     FileNameFieldISODuration,
     FileNameFieldPeriod,
@@ -310,6 +311,36 @@ def test_fields_decode_error(field: FileNameField, input_string: str):
             np.datetime64("2023-01-01"),
             False,
         ),
+        (
+            FileNameFieldGeoBox(""),
+            (-60, -10, 60, 10),
+            (-50, -8, 58, -6),
+            True,
+        ),
+        (
+            FileNameFieldGeoBox(""),
+            (-60, -10, 60, 10),
+            (48, 8, 52, 12),
+            True,
+        ),
+        (
+            FileNameFieldGeoBox(""),
+            (-60, -10, 60, 10),
+            (-80, -20, -59, -9),
+            True,
+        ),
+        (
+            FileNameFieldGeoBox(""),
+            (-60, -10, 60, 10),
+            (-50, 20, -40, 30),
+            False,
+        ),
+        (
+            FileNameFieldGeoBox(""),
+            (-60, -10, 60, 10),
+            (70, -5, 80, 5),
+            False,
+        ),
     ],
 )
 def test_field_test(field, reference, tested, filtered):
@@ -334,6 +365,7 @@ def test_field_test(field, reference, tested, filtered):
         ),
         (FileNameFieldDateDelta("", "", np.timedelta64(1, "D")), Period),
         (FileNameFieldISODuration(""), ISODuration),
+        (FileNameFieldGeoBox(""), tuple[float, float, float, float]),
     ],
 )
 def test_field_type(field, expected_type):
@@ -362,6 +394,7 @@ def test_field_type_name(field: FileNameField, expected_type_name: str):
         (FileNameFieldPeriod("pfield", ""), ["[%Y-%m-%dT%H:%M:%S]"]),
         (FileNameFieldEnum("efield", Color), ["RED", "BLUE", "GREEN", "gray"]),
         (FileNameFieldISODuration("Ifield"), ["ISO8601"]),
+        (FileNameFieldGeoBox("gfield"), ["GeoBox", "intersect"]),
     ],
 )
 def test_field_description(field: FileNameField, elements: list[str]):

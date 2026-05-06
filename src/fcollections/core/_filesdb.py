@@ -18,7 +18,7 @@ import pandas as pda
 from fsspec import AbstractFileSystem
 from fsspec.implementations.local import LocalFileSystem
 
-from ._filenames import FileNameConvention
+from ._filenames import FileNameConvention, FileNameField
 from ._listing import DirNode, FileSystemMetadataCollector, Layout, LayoutMismatchError
 from ._metadata import GroupMetadata
 from ._readers import IFilesReader
@@ -245,17 +245,25 @@ def _predicates_parameters(
 
     docstring_parameters, signature_parameters = {}, {}
     for predicate_builder in predicate_classes:
-        docstring_parameters |= {
-            p.arg_name: p
-            for p in dcs.parse(predicate_builder.__init__.__doc__).params
-            if p not in ["self", "indexes"]
-        }
+        field = predicate_builder.parameter()
+        docstring_parameters[field.name] = dcs.DocstringParam(
+            ["param", field.name],
+            textwrap.fill(field.description),
+            field.name,
+            # Docstrings in the project do not repeat the typing in the
+            # Parameters section. We set None to comply with this implicit
+            # convention
+            None,
+            False,
+            None,
+        )
 
-        signature_parameters |= {
-            k: p.replace(kind=inspect.Parameter.KEYWORD_ONLY)
-            for k, p in inspect.signature(predicate_builder.__init__).parameters.items()
-            if k not in ["self", "indexes"]
-        }
+        signature_parameters[field.name] = inspect.Parameter(
+            field.name,
+            default=inspect.Parameter.empty,
+            annotation=field.type,
+            kind=inspect.Parameter.KEYWORD_ONLY,
+        )
 
     return docstring_parameters, signature_parameters
 
@@ -489,20 +497,23 @@ class FilesDatabase(metaclass=FilesDatabaseMeta):
                     for requested_field in predicate_builder.record_fields()
                 ]
                 try:
+                    parameter = predicate_builder.parameter()
+
                     predicate = predicate_builder(
                         record_indexes,
-                        # Extract args from the parameters
-                        *[kwargs.pop(p) for p in predicate_builder.parameters()],
+                        # Extract parameter
+                        parameter.sanitize(kwargs.pop(parameter.name)),
                     )
+
                     predicates.append(predicate)
                     logger.debug(
-                        "Added predicate over parameters %s",
-                        predicate_builder.parameters(),
+                        "Added predicate from parameter %s",
+                        parameter.name,
                     )
                 except KeyError:
                     logger.debug(
-                        "Predicate build skipped, missing one of the following parameters %s",
-                        predicate_builder.parameters(),
+                        "Predicate build skipped, parameter %s is missing",
+                        parameter.name,
                     )
 
         df = self.discoverer.to_dataframe(
@@ -959,5 +970,5 @@ class IPredicate(abc.ABC):
 
     @classmethod
     @abc.abstractmethod
-    def parameters(cls) -> tuple[str, ...]:
-        """Initialization parameters name for the class."""
+    def parameter(cls) -> FileNameField:
+        """Initialization parameter for the class."""

@@ -4,7 +4,7 @@ import functools
 import logging
 import typing as tp
 
-from fcollections.core import IPredicate
+from fcollections.core import FileNameField, FileNameFieldGeoBox, IPredicate
 from fcollections.geometry import query_half_orbits_intersect
 from fcollections.missions import PHASES, Missions
 
@@ -80,5 +80,16 @@ class SwotGeometryPredicate(IPredicate):
         return ("cycle_number", "pass_number")
 
     @classmethod
-    def parameters(cls) -> tuple[str, ...]:
-        return ("bbox",)
+    def parameter(cls) -> FileNameField:
+        return FileNameFieldGeoBox(
+            "bbox",
+            description=(
+                "The bounding box (lon_min, lat_min, lon_max, lat_max) used to "
+                "select the data in a given area. Longitude coordinates can be "
+                "provided in [-180, 180[ or [0, 360[ convention. If bbox's "
+                "longitude crosses the circularity, it will be split in two "
+                "subboxes to ensure a proper selection (e.g. longitude interval"
+                ": [170, -170] -> data in [170, 180[ and [-180, -170] will be "
+                "retrieved"
+            ),
+        )

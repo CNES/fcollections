@@ -1,6 +1,6 @@
 import typing as tp
 
-from fcollections.core import IPredicate
+from fcollections.core import CaseType, FileNameField, FileNameFieldEnum, IPredicate
 from fcollections.missions import MissionsPhases, Phase
 
 from ._definitions._swot import SwotPhases
@@ -36,5 +36,14 @@ class SwotPhasePredicate(IPredicate):
         return ("cycle_number",)
 
     @classmethod
-    def parameters(cls) -> tuple[str, ...]:
-        return ("phase",)
+    def parameter(cls) -> FileNameField:
+        return FileNameFieldEnum(
+            "phase",
+            SwotPhases,
+            description=(
+                "Phase of the SWOT mission that can be used to select the "
+                "associated cycle numbers range."
+            ),
+            case_type_decoded=CaseType.upper,
+            case_type_encoded=CaseType.lower,
+        )

@@ -15,6 +15,7 @@ import xarray as xr
 from fcollections.core import (
     Deduplicator,
     FileNameConvention,
+    FileNameField,
     FileNameFieldDatetime,
     FileNameFieldInteger,
     FileNameFieldString,
@@ -113,8 +114,8 @@ class ModuloPredicate(IPredicate):
         return ("a_number",)
 
     @classmethod
-    def parameters(cls) -> tuple[str, ...]:
-        return ("b_number",)
+    def parameter(cls) -> FileNameField:
+        return FileNameFieldString("b_number")
 
 
 class FilesDatabaseTestPredicate(FilesDatabaseTestNoUnmixer):
