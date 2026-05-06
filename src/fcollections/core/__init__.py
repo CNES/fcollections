@@ -27,7 +27,7 @@ from ._filenames import (
 from ._filesdb import (
     Deduplicator,
     FilesDatabase,
-    IPredicate,
+    IFilterBuilder,
     NotExistingPathError,
     SubsetsUnmixer,
 )
@@ -95,7 +95,7 @@ __all__ = [
     "VariableMetadata",
     "DiscreteTimesMixin",
     "ITemporalMixin",
-    "IPredicate",
+    "IFilterBuilder",
     "Layout",
     "DecodingError",
     "ICodec",

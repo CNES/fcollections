@@ -24,7 +24,7 @@ from fcollections.core import (
 
 from ._definitions._constants import DESCRIPTIONS
 from ._definitions._swot import ProductSubset
-from ._predicates import SwotPhasePredicate
+from ._predicates import SwotPhaseFilterBuilder
 from ._readers import SwotReaderL2LRSSH
 
 if TYPE_CHECKING:  # pragma: no cover
@@ -579,18 +579,18 @@ class BasicNetcdfFilesDatabaseSwotLRL2(FilesDatabase, PeriodMixin):
     )
 
     # Convert phase filter to cycle_numbers filter
-    predicate_classes = [SwotPhasePredicate]
+    filter_builders = [SwotPhaseFilterBuilder]
 
 
 try:
     from fcollections.implementations.optional import (
         GeoSwotReaderL2LRSSH,
-        SwotGeometryPredicate,
+        SwotGeometryFilterBuilder,
     )
 
     class NetcdfFilesDatabaseSwotLRL2(BasicNetcdfFilesDatabaseSwotLRL2):
         reader = GeoSwotReaderL2LRSSH()
-        predicate_classes = [SwotGeometryPredicate, SwotPhasePredicate]
+        filter_builders = [SwotGeometryFilterBuilder, SwotPhaseFilterBuilder]
 
 except ImportError:
     import logging

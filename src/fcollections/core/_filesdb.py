@@ -62,7 +62,7 @@ class FilesDatabaseMeta(ABCMeta):
         setattr(
             new_class,
             "listing_parameters",
-            parameters["convention"][1] | parameters["predicates"][1],
+            parameters["convention"][1] | parameters["filter_builders"][1],
         )
 
         method_parameters = _combine_parameters(new_class, parameters)
@@ -109,7 +109,9 @@ def _extract_parameters(
     parameters["convention"] = _convention_parameters(
         new_class.layouts[0].conventions[-1]
     )
-    parameters["predicates"] = _predicates_parameters(new_class.predicate_classes)
+    parameters["filter_builders"] = _filter_builders_parameters(
+        new_class.filter_builders
+    )
     return parameters
 
 
@@ -127,14 +129,14 @@ def _combine_parameters(
         (
             parameters["reader"][0]
             | parameters["convention"][0]
-            | parameters["predicates"][0]
+            | parameters["filter_builders"][0]
         ).values()
     )
     query_signature = list(
         (
             parameters["reader"][1]
             | parameters["convention"][1]
-            | parameters["predicates"][1]
+            | parameters["filter_builders"][1]
         ).values()
     )
     out["query"] = (query_docstring, query_signature)
@@ -144,10 +146,10 @@ def _combine_parameters(
     # parameters and predicates parameters
     # self is included in the listing_signature_parameters
     files_docstring = list(
-        (parameters["convention"][0] | parameters["predicates"][0]).values()
+        (parameters["convention"][0] | parameters["filter_builders"][0]).values()
     )
     files_signature = list(
-        (parameters["convention"][1] | parameters["predicates"][1]).values()
+        (parameters["convention"][1] | parameters["filter_builders"][1]).values()
     )
     out["list_files"] = (files_docstring, files_signature)
 
@@ -237,15 +239,15 @@ def _convention_parameters(
     return convention_docstring_parameters, convention_signature_parameters
 
 
-def _predicates_parameters(
-    predicate_classes: list[IPredicate] | None,
+def _filter_builders_parameters(
+    filter_builders: list[IFilterBuilder] | None,
 ) -> tuple[dict[str, dcs.DocstringParam], dict[str, inspect.Parameter]]:
-    if predicate_classes is None:
+    if filter_builders is None:
         return {}, {}
 
     docstring_parameters, signature_parameters = {}, {}
-    for predicate_builder in predicate_classes:
-        field = predicate_builder.parameter()
+    for filter_builder in filter_builders:
+        field = filter_builder.parameter()
         docstring_parameters[field.name] = dcs.DocstringParam(
             ["param", field.name],
             textwrap.fill(field.description),
@@ -363,7 +365,7 @@ class FilesDatabase(metaclass=FilesDatabaseMeta):
     The keys is the columns of the file metadata table, the value is a
     tuple of dimensions for insertion.
     """
-    predicate_classes: list[type[IPredicate]] | None = None
+    filter_builders: list[type[IFilterBuilder]] | None = None
     """List of predicates that are built at each query.
 
     The predicates intercepts the input parameters to build a custom
@@ -429,7 +431,7 @@ class FilesDatabase(metaclass=FilesDatabaseMeta):
         sort: bool = False,
         deduplicate: bool = False,
         unmix: bool = False,
-        predicates: tp.Iterable[IPredicate] = (),
+        predicates: tp.Iterable[tp.Callable[[tuple[tp.Any, ...]], bool]] = (),
         stat_fields: tuple[str] = (),
         **kwargs,
     ) -> pda.DataFrame:
@@ -480,40 +482,57 @@ class FilesDatabase(metaclass=FilesDatabaseMeta):
         # This docstring will be superseded by the metaclass
         bad_kwargs = [k for k in kwargs if k not in self.listing_parameters]
         if bad_kwargs != []:
-            raise ValueError(
-                f"list_files() got unexpected keyword argument(s): {bad_kwargs}"
-            )
+            msg = f"list_files() got unexpected keyword argument(s): {bad_kwargs}"
+            raise ValueError(msg)
 
-        # Auto-build declared predicates. Parameters used by the predicates are
-        # expected to be independant of the other parameters from the file name
-        # convention
+        # Auto-build declared predicates and additionnal filters.
         predicates = list(predicates)
-        if self.predicate_classes is not None:
-            fields_names = list(map(lambda f: f.name, self.parser.fields))
-            for predicate_builder in self.predicate_classes:
-                # Convert field name into indexes for the record predicate
-                record_indexes = [
-                    fields_names.index(requested_field)
-                    for requested_field in predicate_builder.record_fields()
-                ]
-                try:
-                    parameter = predicate_builder.parameter()
+        if self.filter_builders is not None:
+            record_mapping = {
+                field.name: ii for ii, field in enumerate(self.parser.fields)
+            }
 
-                    predicate = predicate_builder(
-                        record_indexes,
-                        # Extract parameter
-                        parameter.sanitize(kwargs.pop(parameter.name)),
+            for filter_builder in self.filter_builders:
+                try:
+                    filter_field = filter_builder.parameter()
+                    sanitized_parameter = filter_field.sanitize(
+                        kwargs[filter_field.name]
+                    )
+                except KeyError:
+                    logger.debug(
+                        "Predicate build skipped, parameter %s is missing",
+                        filter_field.name,
+                    )
+                    continue
+
+                try:
+                    # Complex filter (predicate) that will be applied on the
+                    # files' record
+                    predicate = filter_builder.build_predicate(
+                        record_mapping, sanitized_parameter
                     )
 
                     predicates.append(predicate)
                     logger.debug(
                         "Added predicate from parameter %s",
-                        parameter.name,
+                        filter_field.name,
                     )
-                except KeyError:
+                except NotImplementedError:
+                    # Simple converter from one filter to another
+                    filters = filter_builder.build_filter(sanitized_parameter)
+                    common_keys = filters.keys() & kwargs.keys()
+                    if len(common_keys) > 0:
+                        msg = (
+                            "Incompatible filters, cannot give both "
+                            f"'{filter_field.name}' and {common_keys}."
+                        )
+                        raise ValueError(msg)
+
+                    kwargs |= filters
                     logger.debug(
-                        "Predicate build skipped, parameter %s is missing",
-                        parameter.name,
+                        "Converted filter '%s' to '%s'",
+                        filter_field.name,
+                        filters.keys(),
                     )
 
         df = self.discoverer.to_dataframe(
@@ -933,40 +952,36 @@ class Deduplicator:
         return set(self.unique) | set(self.auto_pick_last)
 
 
-class IPredicate(abc.ABC):
-    """Interface for defining a complex predicate.
+class IFilterBuilder(abc.ABC):
+    """Interface for building filters."""
 
-    This predicate will be used to filter records from file names listing and
-    parsing.
-
-    Attributes
-    ----------
-    indexes
-        Attributes
-    *args
-        Any input that will be used to create the predicate
-    """
-
+    @classmethod
     @abc.abstractmethod
-    def __call__(self, record: tuple[tp.Any, ...]) -> bool:
-        """Call the predicate.
+    def build_predicate(
+        self, record_mapping: dict[str, int], *args: tp.Any
+    ) -> tp.Callable[[tuple[tp.Any, ...]], bool]:
+        """Build a complex predicate.
 
         Parameters
         ----------
-        record
-            The record to filter
+        record_mapping
+            Mapping between the record names and indexes. Records are given
+            as a tuple to the predicate, so we need the index to extract the
+            given fields.
+        args
+            Any input argument that is needed to build the predicate.
 
         Returns
         -------
-        result
-            True if the record complies with the criteria given by this
-            predicate
+        Callable
+            A predicate that checks whether the input record fulfills the stated
+            conditions.
         """
 
     @classmethod
     @abc.abstractmethod
-    def record_fields(cls) -> tuple[str, ...]:
-        """Record fields needed by the predicate."""
+    def build_filter(cls, *args: tp.Any) -> dict[str, tp.Any]:
+        """Build a simple filter."""
 
     @classmethod
     @abc.abstractmethod

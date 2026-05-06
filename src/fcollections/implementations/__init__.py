@@ -82,7 +82,7 @@ from ._ohc import (
     FileNameConventionOHC,
     NetcdfFilesDatabaseOHC,
 )
-from ._predicates import SwotPhasePredicate
+from ._predicates import SwotPhaseFilterBuilder
 from ._readers import (
     StackLevel,
     SwotReaderL2LRSSH,
@@ -195,7 +195,7 @@ __all__ = [
     "SwotReaderL3LRSSH",
     "SwotReaderL3WW",
     # Predicates
-    "SwotPhasePredicate",
+    "SwotPhaseFilterBuilder",
     # Common definitions
     "Delay",
     "ProductLevel",

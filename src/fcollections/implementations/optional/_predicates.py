@@ -4,14 +4,14 @@ import functools
 import logging
 import typing as tp
 
-from fcollections.core import FileNameField, FileNameFieldGeoBox, IPredicate
+from fcollections.core import FileNameField, FileNameFieldGeoBox, IFilterBuilder
 from fcollections.geometry import query_half_orbits_intersect
 from fcollections.missions import PHASES, Missions
 
 logger = logging.getLogger(__name__)
 
 
-class SwotGeometryPredicate(IPredicate):
+class SwotGeometryFilterBuilder(IFilterBuilder):
     """Predicate builder for swot karin footprints.
 
     This predicate builder can transform a box in a callable that can predict if
@@ -27,11 +27,10 @@ class SwotGeometryPredicate(IPredicate):
         Bounding box, given as lon_min, lat_min, lon_max, lat_max
     """
 
-    def __init__(
-        self, indexes: tuple[int, int], bbox: tuple[float, float, float, float]
-    ):
-
-        self.cycle_number_index, self.pass_number_index = indexes
+    @classmethod
+    def build_predicate(
+        cls, record_indexes: dict[str, int], bbox: tuple[float, float, float, float]
+    ) -> tp.Callable[[tuple[tp.Any, ...]], bool]:
 
         def selected(
             cycle_number: int,
@@ -63,21 +62,26 @@ class SwotGeometryPredicate(IPredicate):
                     selected_pass_numbers=pass_numbers_intersect,
                 )
             )
-        self.predicates = predicates
 
-    def __call__(self, record: tuple[tp.Any, ...]) -> bool:
-        cycle_number, pass_number = (
-            record[self.cycle_number_index],
-            record[self.pass_number_index],
-        )
-        return functools.reduce(
-            lambda x, y: x or y,
-            [predicate(cycle_number, pass_number) for predicate in self.predicates],
-        )
+        cycle_number_index = record_indexes["cycle_number"]
+        pass_number_index = record_indexes["pass_number"]
+
+        def _predicate(record: tuple[tp.Any, ...]) -> bool:
+            cycle_number, pass_number = (
+                record[cycle_number_index],
+                record[pass_number_index],
+            )
+            return functools.reduce(
+                lambda x, y: x or y,
+                [predicate(cycle_number, pass_number) for predicate in predicates],
+            )
+
+        return _predicate
 
     @classmethod
-    def record_fields(cls) -> tuple[str, ...]:
-        return ("cycle_number", "pass_number")
+    def build_filter(cls):
+        msg = "Swot Geometry Filter can only be built as a predicate for records."
+        raise NotImplementedError(msg)
 
     @classmethod
     def parameter(cls) -> FileNameField:

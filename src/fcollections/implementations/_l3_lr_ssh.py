@@ -17,7 +17,7 @@ from fcollections.core import (
 
 from ._definitions._constants import DESCRIPTIONS, ProductLevel
 from ._definitions._swot import ProductSubset, Temporality
-from ._predicates import SwotPhasePredicate
+from ._predicates import SwotPhaseFilterBuilder
 from ._readers import SwotReaderL3LRSSH
 
 SWOT_L3_PATTERN = re.compile(
@@ -131,18 +131,18 @@ class BasicNetcdfFilesDatabaseSwotLRL3(FilesDatabase, PeriodMixin):
     )
 
     # Convert phase filter to cycle_numbers filter
-    predicate_classes = [SwotPhasePredicate]
+    filter_builders = [SwotPhaseFilterBuilder]
 
 
 try:
     from fcollections.implementations.optional import (
         GeoSwotReaderL3LRSSH,
-        SwotGeometryPredicate,
+        SwotGeometryFilterBuilder,
     )
 
     class NetcdfFilesDatabaseSwotLRL3(BasicNetcdfFilesDatabaseSwotLRL3):
         reader = GeoSwotReaderL3LRSSH()
-        predicate_classes = [SwotGeometryPredicate, SwotPhasePredicate]
+        filter_builders = [SwotGeometryFilterBuilder, SwotPhaseFilterBuilder]
 
 except ImportError:
     import logging
