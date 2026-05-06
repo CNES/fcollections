@@ -22,9 +22,9 @@ from fcollections.core import (
     SubsetsUnmixer,
 )
 
+from ._converters import SwotPhaseFilterBuilder
 from ._definitions._constants import DESCRIPTIONS
 from ._definitions._swot import ProductSubset
-from ._predicates import SwotPhaseFilterBuilder
 from ._readers import SwotReaderL2LRSSH
 
 if TYPE_CHECKING:  # pragma: no cover

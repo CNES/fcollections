@@ -2,6 +2,7 @@ from fcollections.core import Layout
 
 __all__ = []
 
+from ._converters import SwotPhaseFilterBuilder
 from ._dac import (
     BasicNetcdfFilesDatabaseDAC,
     FileNameConventionDAC,
@@ -82,7 +83,6 @@ from ._ohc import (
     FileNameConventionOHC,
     NetcdfFilesDatabaseOHC,
 )
-from ._predicates import SwotPhaseFilterBuilder
 from ._readers import (
     StackLevel,
     SwotReaderL2LRSSH,

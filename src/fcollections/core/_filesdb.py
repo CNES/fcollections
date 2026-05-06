@@ -366,11 +366,15 @@ class FilesDatabase(metaclass=FilesDatabaseMeta):
     tuple of dimensions for insertion.
     """
     filter_builders: list[type[IFilterBuilder]] | None = None
-    """List of predicates that are built at each query.
+    """Builders that will create or modify filters for each query.
 
-    The predicates intercepts the input parameters to build a custom
-    record predicate. Usually, it is a complex test involving auxiliary
-    data, such as ground track footprints or half_orbit/periods tables.
+    The builders intercept the input parameters to either build:
+
+    - A custom record predicate. A predicate is a complex test involving
+      auxiliary data - such as ground track footprints or half_orbit/periods
+      tables - and is run on a file record.
+    - A filter converter, to convert an input filter to another filter present
+      in the layouts. For example: ``query(foo="segmentA") -> query(bar=slice(10, 20)}``.
     """
 
     def __init__(
@@ -981,7 +985,18 @@ class IFilterBuilder(abc.ABC):
     @classmethod
     @abc.abstractmethod
     def build_filter(cls, *args: tp.Any) -> dict[str, tp.Any]:
-        """Build a simple filter."""
+        """Build a simple filter.
+
+        Parameters
+        ----------
+        args
+            Any input argument that is needed to build the predicate.
+
+        Returns
+        -------
+        dict[str, tp.Any]
+            Mapping associating the filter name to its authorized values.
+        """
 
     @classmethod
     @abc.abstractmethod

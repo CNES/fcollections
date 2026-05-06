@@ -15,9 +15,9 @@ from fcollections.core import (
     SubsetsUnmixer,
 )
 
+from ._converters import SwotPhaseFilterBuilder
 from ._definitions._constants import DESCRIPTIONS, ProductLevel
 from ._definitions._swot import ProductSubset, Temporality
-from ._predicates import SwotPhaseFilterBuilder
 from ._readers import SwotReaderL3LRSSH
 
 SWOT_L3_PATTERN = re.compile(

@@ -14,10 +14,10 @@ from fcollections.core import (
     SubsetsUnmixer,
 )
 
+from ._converters import SwotPhaseFilterBuilder
 from ._definitions._constants import DESCRIPTIONS
 from ._definitions._swot import ProductSubset
 from ._l3_lr_ssh import AVISO_L3_LR_SSH_LAYOUT_V2
-from ._predicates import SwotPhaseFilterBuilder
 from ._readers import SwotReaderL3WW
 
 SWOT_L3_LR_WINDWAVE_PATTERN = re.compile(

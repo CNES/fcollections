@@ -53,6 +53,10 @@ The following examples can be used to build complex queries
     ```python
     fc.query(cycle_number=slice(1, 4), pass_number=[1, 3])
     ```
+  - A specific orbit of the SWOT mission
+    ```python
+    fc.query(phase='CALVAL')
+    ```
 :::
 :::{tab-item} Periods
   - A time stamp
