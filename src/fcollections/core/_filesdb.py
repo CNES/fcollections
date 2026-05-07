@@ -310,6 +310,10 @@ def _patch_method(
     getattr(cls, name).__signature__ = signature
 
 
+class PerformanceWarning(UserWarning):
+    """Warn user about slow computations."""
+
+
 class FilesDatabase(metaclass=FilesDatabaseMeta):
     """Abstract database mapping.
 
@@ -488,6 +492,22 @@ class FilesDatabase(metaclass=FilesDatabaseMeta):
         if bad_kwargs != []:
             msg = f"list_files() got unexpected keyword argument(s): {bad_kwargs}"
             raise ValueError(msg)
+
+        # Try to ensure that the subset is unique prior to launching the scan.
+        if unmix and self.unmixer is not None:
+            with warnings.catch_warnings():
+                warnings.simplefilter("error", category=PerformanceWarning)
+                try:
+                    subset_filters = self.unmixer.pick_subset(self.subsets, **kwargs)
+                    kwargs |= subset_filters
+                    unmix = False
+                except IndexError:
+                    logger.debug("No subset, nothing to unmixed")
+                    unmix = False
+                except PerformanceWarning:
+                    logger.debug(
+                        "Subset unmixing could not be done before the files scan: it will be done after."
+                    )
 
         # Auto-build declared predicates and additionnal filters.
         predicates = list(predicates)
@@ -735,13 +755,15 @@ class FilesDatabase(metaclass=FilesDatabaseMeta):
 
         Warns
         -----
-        UserWarning
+        PerformanceWarning
             If the requested filter information cannot be extracted from the
             layouts' intermediate node. In this case, a full scan is triggered,
             which will slow down the computation.
-        UserWarning
+        PerformanceWarning
             If layouts are not enabled for this instance. In this case, a full
             scan is triggered, which will slow down the computation.
+        PerformanceWarning
+            If listing the subsets is slow.
 
         Raises
         ------
@@ -759,37 +781,10 @@ class FilesDatabase(metaclass=FilesDatabaseMeta):
         subsets
             To list the subsets keys.
         """
-        if self.enable_layouts:
-            conventions = map(lambda l: l.conventions, self.layouts)
-            conventions = functools.reduce(lambda a, b: a + b, conventions)
-            fields = map(
-                lambda convention: {f.name for f in convention.fields}, conventions
-            )
-            field_names = functools.reduce(lambda a, b: a | b, fields)
-        else:
-            field_names = {
-                field.name for field in self.layouts[0].conventions[-1].fields
-            }
-
-        if filter_name not in field_names:
-            msg = (
-                f"Unknown filter name {filter_name}. Possible values are "
-                f"{field_names}"
-            )
-            raise ValueError(msg)
-
-        missing_partition_keys = set(self.unmixer.partition_keys) - set(kwargs.keys())
-        if (
-            filter_name not in self.unmixer.partition_keys
-            and len(self.subsets) > 1
-            and len(missing_partition_keys) > 0
-        ):
-            msg = (
-                "Cannot work on heterogenous datasets, subset should be chosen "
-                f"by providing the following filters: {self.unmixer.partition_keys} "
-                "(subsets can be displayed using the 'subsets' property)."
-            )
-            raise ValueError(msg)
+        self._validate_field(filter_name)
+        unmix = (
+            self.unmixer is not None and filter_name not in self.unmixer.partition_keys
+        )
 
         if not self.enable_layouts:
             msg = (
@@ -797,8 +792,8 @@ class FilesDatabase(metaclass=FilesDatabaseMeta):
                 f"possible values of filter '{filter_name}'. Enable layouts to "
                 "improve performance."
             )
-            warnings.warn(msg)
-            return set(self.list_files(**kwargs)[filter_name])
+            warnings.warn(msg, PerformanceWarning)
+            return set(self.list_files(**kwargs, unmix=unmix)[filter_name])
 
         selected_layouts = []
         for layout in self.layouts:
@@ -821,24 +816,71 @@ class FilesDatabase(metaclass=FilesDatabaseMeta):
                 "to full scan to deduce the filters' possible values (the "
                 "performance is degraded)."
             )
-            warnings.warn(msg)
-            return set(self.list_files(**kwargs)[filter_name])
+            warnings.warn(msg, PerformanceWarning)
+            return set(self.list_files(**kwargs, unmix=unmix)[filter_name])
 
         metadata_collector = FileSystemMetadataCollector(
             selected_layouts, self.discoverer.root_node
         )
 
         try:
+            # Check if there is one selected subset. It will raise a ValueError if
+            # there is an ambiguity. We need the subsets list whether the listing
+            # is quick or slow. In case of a slow computation of subsets, a
+            # warning will be emitted
+            if unmix:
+                try:
+                    kwargs |= self.unmixer.pick_subset(self.subsets, **kwargs)
+                except IndexError:
+                    logger.debug("No subset, nothing to unmixed")
+
             return {x[0] for x in metadata_collector.discover(**kwargs)}
         except LayoutMismatchError:
-            logger.info(
+            msg = (
                 "Layouts are enabled and should contain information about "
-                "filter '%s' in their intermediate nodes. However,"
-                " the actual file organization does not match the layouts. "
-                "Falling back to full scan (the performance is degraded).",
-                filter_name,
+                f"filter '{filter_name}' in their intermediate folders. However,"
+                " the actual file organization either is flat or does not match"
+                " the folders. Falling back to full scan (the performance is "
+                "degraded)."
             )
-            return set(self.list_files(**kwargs)[filter_name])
+            warnings.warn(msg, PerformanceWarning)
+            return set(self.list_files(**kwargs, unmix=unmix)[filter_name])
+
+    def _validate_field(self, filter_name: str):
+        """Check a field is declared in one of the layouts.
+
+        If the layouts are not enabled, only the file name convention (last
+        convention of one of the layouts) is considered for the check.
+
+        Parameters
+        ----------
+        filter_name
+            Name of the filter to check against the declared fields in the
+            conventions.
+
+        Raises
+        ------
+        ValueError
+            If the input filter name is unknown.
+        """
+        if self.enable_layouts:
+            conventions = map(lambda l: l.conventions, self.layouts)
+            conventions = functools.reduce(lambda a, b: a + b, conventions)
+            fields = map(
+                lambda convention: {f.name for f in convention.fields}, conventions
+            )
+            field_names = functools.reduce(lambda a, b: a | b, fields)
+        else:
+            field_names = {
+                field.name for field in self.layouts[0].conventions[-1].fields
+            }
+
+        if filter_name not in field_names:
+            msg = (
+                f"Unknown filter name {filter_name}. Possible values are "
+                f"{field_names}"
+            )
+            raise ValueError(msg)
 
     @property
     def subsets(self) -> list[dict[str, tp.Any]]:

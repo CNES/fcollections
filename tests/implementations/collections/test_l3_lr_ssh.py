@@ -11,7 +11,7 @@ import pytest
 import xarray as xr
 from utils import brute_force_geographical_selection, extract_box_from_polygon
 
-from fcollections.core import FileNameConvention, Layout
+from fcollections.core import FileNameConvention, Layout, PerformanceWarning
 from fcollections.implementations import (
     AVISO_L3_LR_SSH_LAYOUT_V2,
     AVISO_L3_LR_SSH_LAYOUT_V3,
@@ -781,5 +781,7 @@ def test_subsets(l3_lr_ssh_dir: Path):
             "version": "1.0.2",
         },
     ]
-    assert len(db.subsets) == len(expected)
-    assert all([subset in expected for subset in db.subsets])
+
+    with pytest.warns(PerformanceWarning):
+        assert len(db.subsets) == len(expected)
+        assert all([subset in expected for subset in db.subsets])

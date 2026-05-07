@@ -26,6 +26,7 @@ from fcollections.core import (
     Layout,
     LayoutMismatchError,
     NotExistingPathError,
+    PerformanceWarning,
     SubsetsUnmixer,
 )
 
@@ -618,6 +619,43 @@ def test_subsets(db_with_files_good_layout: FilesDatabaseTest):
     )
 
 
+class FilesDatabaseTestMultipleKeys(FilesDatabaseTestNoUnmixer):
+    unmixer = SubsetsUnmixer(("a_number", "time"))
+
+
+@pytest.fixture(scope="session")
+def db_with_files_multiple_subsets_keys(
+    db_with_files_bad_layout: FilesDatabaseTest,
+) -> FilesDatabaseTestMultipleKeys:
+    fs = db_with_files_bad_layout.fs
+    fixed_path = Path(db_with_files_bad_layout.path) / "baz"
+    db = FilesDatabaseTestMultipleKeys(fixed_path, fs, enable_layouts=True)
+    return db
+
+
+def test_subsets_multiple_keys(
+    db_with_files_multiple_subsets_keys: FilesDatabaseTestMultipleKeys,
+):
+    with pytest.warns(PerformanceWarning):
+        assert len(db_with_files_multiple_subsets_keys.subsets) == 2
+
+        assert all(
+            [
+                subset
+                in [
+                    {"a_number": 1, "time": np.datetime64("2025-01-01")},
+                    {"a_number": 2, "time": np.datetime64("2025-01-01")},
+                ]
+                for subset in db_with_files_multiple_subsets_keys.subsets
+            ]
+        )
+
+
+def test_filters_value_empty_dir(tmp_path: Path):
+    db = FilesDatabaseTest(path=tmp_path)
+    assert len(db.filter_values("b_string")) == 0
+
+
 def test_filters_value_full_scan_filter_not_in_layout(
     db_with_files_good_layout: FilesDatabaseTest,
 ):
@@ -642,7 +680,7 @@ def test_filters_value_layouts_disabled_full_scan(
     db = FilesDatabaseTest(
         db_with_files_bad_layout.path, db_with_files_bad_layout.fs, enable_layouts=False
     )
-    with pytest.warns(UserWarning, match="enabled"):
+    with pytest.warns(PerformanceWarning, match="enabled"):
         values = db.filter_values(
             "a_number",
         )
@@ -650,14 +688,18 @@ def test_filters_value_layouts_disabled_full_scan(
 
 
 def test_filters_value_full_scan_flat(db_with_files: FilesDatabaseTest):
-    values = db_with_files.filter_values("a_number")
+    with pytest.warns(PerformanceWarning, match="flat"):
+        values = db_with_files.filter_values("a_number")
     assert values == {1, 2}
 
 
 def test_filters_value_full_scan_layouts_mismatch(
     db_with_files_bad_layout: FilesDatabaseTest,
 ):
-    with pytest.raises(LayoutMismatchError):
+    with (
+        pytest.warns(PerformanceWarning, match="flat"),
+        pytest.raises(LayoutMismatchError),
+    ):
         db_with_files_bad_layout.filter_values("b_string", a_number=1)
 
 
@@ -674,5 +716,5 @@ def test_filters_value_unknown(db_with_files_good_layout: FilesDatabaseTest):
 def test_filters_value_missing_subset_selection(
     db_with_files_good_layout: FilesDatabaseTest,
 ):
-    with pytest.raises(ValueError, match="heterogenous datasets"):
+    with pytest.raises(ValueError, match="could not be unmixed"):
         db_with_files_good_layout.filter_values("b_string")
