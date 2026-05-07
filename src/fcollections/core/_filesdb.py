@@ -310,6 +310,10 @@ def _patch_method(
     getattr(cls, name).__signature__ = signature
 
 
+class PerformanceWarning(UserWarning):
+    """Warn user about slow computations."""
+
+
 class FilesDatabase(metaclass=FilesDatabaseMeta):
     """Abstract database mapping.
 
@@ -488,6 +492,22 @@ class FilesDatabase(metaclass=FilesDatabaseMeta):
         if bad_kwargs != []:
             msg = f"list_files() got unexpected keyword argument(s): {bad_kwargs}"
             raise ValueError(msg)
+
+        # Try to ensure that the subset is unique prior to launching the scan.
+        if unmix and self.unmixer is not None:
+            with warnings.catch_warnings():
+                warnings.simplefilter("error", category=PerformanceWarning)
+                try:
+                    subset_filters = self.unmixer.pick_subset(self.subsets, **kwargs)
+                    kwargs |= subset_filters
+                    unmix = False
+                except IndexError:
+                    logger.debug("No subset, nothing to unmix")
+                    unmix = False
+                except PerformanceWarning:
+                    logger.debug(
+                        "Subset unmixing could not be done before the files scan: it will be done after."
+                    )
 
         # Auto-build declared predicates and additionnal filters.
         predicates = list(predicates)
@@ -735,13 +755,15 @@ class FilesDatabase(metaclass=FilesDatabaseMeta):
 
         Warns
         -----
-        UserWarning
+        PerformanceWarning
             If the requested filter information cannot be extracted from the
             layouts' intermediate node. In this case, a full scan is triggered,
             which will slow down the computation.
-        UserWarning
+        PerformanceWarning
             If layouts are not enabled for this instance. In this case, a full
             scan is triggered, which will slow down the computation.
+        PerformanceWarning
+            If listing the subsets is slow.
 
         Raises
         ------
@@ -759,37 +781,16 @@ class FilesDatabase(metaclass=FilesDatabaseMeta):
         subsets
             To list the subsets keys.
         """
-        if self.enable_layouts:
-            conventions = map(lambda l: l.conventions, self.layouts)
-            conventions = functools.reduce(lambda a, b: a + b, conventions)
-            fields = map(
-                lambda convention: {f.name for f in convention.fields}, conventions
-            )
-            field_names = functools.reduce(lambda a, b: a | b, fields)
-        else:
-            field_names = {
-                field.name for field in self.layouts[0].conventions[-1].fields
-            }
-
-        if filter_name not in field_names:
-            msg = (
-                f"Unknown filter name {filter_name}. Possible values are "
-                f"{field_names}"
-            )
-            raise ValueError(msg)
-
-        missing_partition_keys = set(self.unmixer.partition_keys) - set(kwargs.keys())
-        if (
-            filter_name not in self.unmixer.partition_keys
-            and len(self.subsets) > 1
-            and len(missing_partition_keys) > 0
-        ):
-            msg = (
-                "Cannot work on heterogenous datasets, subset should be chosen "
-                f"by providing the following filters: {self.unmixer.partition_keys} "
-                "(subsets can be displayed using the 'subsets' property)."
-            )
-            raise ValueError(msg)
+        # Implementation note: all branches leading to calling list_files must
+        # raise a PerformanceWarning prior to calling the method. list_files
+        # itself calls filter_values to try unmixing the subsets prior to the
+        # listing. To avoid an recursion error, list_files relies on the emitted
+        # warnings to know that it cannot list the subsets quickly, and must do
+        # the unmixing after the listing instead.
+        self._validate_field(filter_name)
+        unmix = (
+            self.unmixer is not None and filter_name not in self.unmixer.partition_keys
+        )
 
         if not self.enable_layouts:
             msg = (
@@ -797,8 +798,8 @@ class FilesDatabase(metaclass=FilesDatabaseMeta):
                 f"possible values of filter '{filter_name}'. Enable layouts to "
                 "improve performance."
             )
-            warnings.warn(msg)
-            return set(self.list_files(**kwargs)[filter_name])
+            warnings.warn(msg, PerformanceWarning)
+            return set(self.list_files(**kwargs, unmix=unmix)[filter_name])
 
         selected_layouts = []
         for layout in self.layouts:
@@ -821,24 +822,71 @@ class FilesDatabase(metaclass=FilesDatabaseMeta):
                 "to full scan to deduce the filters' possible values (the "
                 "performance is degraded)."
             )
-            warnings.warn(msg)
-            return set(self.list_files(**kwargs)[filter_name])
+            warnings.warn(msg, PerformanceWarning)
+            return set(self.list_files(**kwargs, unmix=unmix)[filter_name])
 
         metadata_collector = FileSystemMetadataCollector(
             selected_layouts, self.discoverer.root_node
         )
 
         try:
+            # Check if there is one selected subset. It will raise a ValueError if
+            # there is an ambiguity. We need the subsets list whether the listing
+            # is quick or slow. In case of a slow computation of subsets, a
+            # warning will be emitted
+            if unmix:
+                try:
+                    kwargs |= self.unmixer.pick_subset(self.subsets, **kwargs)
+                except IndexError:
+                    logger.debug("No subset, nothing to unmix")
+
             return {x[0] for x in metadata_collector.discover(**kwargs)}
         except LayoutMismatchError:
-            logger.info(
+            msg = (
                 "Layouts are enabled and should contain information about "
-                "filter '%s' in their intermediate nodes. However,"
-                " the actual file organization does not match the layouts. "
-                "Falling back to full scan (the performance is degraded).",
-                filter_name,
+                f"filter '{filter_name}' in their intermediate folders. However,"
+                " the actual file organization either is flat or does not match"
+                " the folders. Falling back to full scan (the performance is "
+                "degraded)."
             )
-            return set(self.list_files(**kwargs)[filter_name])
+            warnings.warn(msg, PerformanceWarning)
+            return set(self.list_files(**kwargs, unmix=unmix)[filter_name])
+
+    def _validate_field(self, filter_name: str):
+        """Check a field is declared in one of the layouts.
+
+        If the layouts are not enabled, only the file name convention (last
+        convention of one of the layouts) is considered for the check.
+
+        Parameters
+        ----------
+        filter_name
+            Name of the filter to check against the declared fields in the
+            conventions.
+
+        Raises
+        ------
+        ValueError
+            If the input filter name is unknown.
+        """
+        if self.enable_layouts:
+            conventions = map(lambda l: l.conventions, self.layouts)
+            conventions = functools.reduce(lambda a, b: a + b, conventions)
+            fields = map(
+                lambda convention: {f.name for f in convention.fields}, conventions
+            )
+            field_names = functools.reduce(lambda a, b: a | b, fields)
+        else:
+            field_names = {
+                field.name for field in self.layouts[0].conventions[-1].fields
+            }
+
+        if filter_name not in field_names:
+            msg = (
+                f"Unknown filter name {filter_name}. Possible values are "
+                f"{field_names}"
+            )
+            raise ValueError(msg)
 
     @property
     def subsets(self) -> list[dict[str, tp.Any]]:
@@ -863,47 +911,77 @@ class FilesDatabase(metaclass=FilesDatabaseMeta):
 
 @dc.dataclass
 class SubsetsUnmixer:
-    partition_keys: tuple[str, ...] | dict[str, tp.Callable | None]
+    """Subset unmixing.
+
+    In case multiple subsets are present, this class can be used to
+    enforce an auto pick for some pre-configured keys. The second role
+    of this class is to enforce that only one subset is present at a
+    time. An error will be raised if the auto picks cannot reduce the
+    number of subsets to 1.
+
+    Raises
+    ------
+    ValueError
+        If the auto_pick keys are not partitioning keys.
+    """
+
+    partition_keys: tuple[str, ...]
+    """Partitioning keys for subsets."""
     auto_pick_last: tuple[str, ...] = dc.field(default_factory=tuple)
+    """Auto picked keys for subset selection.
 
-    def __call__(self, df: pda.DataFrame) -> pda.DataFrame:
-        if len(df) == 0:
-            return df
+    The auto picked keys are used to select one subset amongst multiple
+    choices. The keys must sortable so that the last element is chosen.
+    """
 
-        try:
-            subsets = df.groupby(
-                [
-                    (
-                        df[partition_key].apply(transform)
-                        if transform is not None
-                        else df[partition_key]
-                    )
-                    for partition_key, transform in self.partition_keys.items()
-                ]
+    def __post_init__(self):
+        not_partition_keys = set(self.auto_pick_last) - set(self.partition_keys)
+        if len(not_partition_keys) > 0:
+            msg = (
+                "Auto pick keys should be partitioning keys: "
+                f"{not_partition_keys} are not partitioning keys"
             )
-        except AttributeError:
-            # We have a tuple
-            grouping_keys = list(self.partition_keys)
-            subsets = df.groupby(
-                # In pandas 2, a list with one single element gave a scalar keys
-                # for the groups. In pandas 3, a future warning is raised,
-                # asking to give either a single key or a list with more than
-                # one key
-                grouping_keys if len(grouping_keys) > 1 else grouping_keys[0],
-                # Pandas 3 tries to sort the groups, which can raise an error if
-                # a column cannot be ordered. We don't need this sort so we
-                # disable it
-                sort=False,
-            )
+            raise ValueError(msg)
 
-        # Pick one subset using panda duplicate handling
-        subset_names = [
-            (group,) if len(self.partition_keys) == 1 else group
-            for group in subsets.groups.keys()
-        ]
-        df_subsets = pda.DataFrame.from_records(
-            subset_names, columns=self.partition_keys
+    def pick_subset(
+        self, subsets: list[dict[str, tp.Any]], **subset_filters: tp.Any
+    ) -> dict[str, tp.Any]:
+        """Manual and auto pick of a subset amongst multiple choices.
+
+        Parameters
+        ----------
+        subsets
+            List of subsets given as mapping between the partitioning keys and
+            their values.
+        subset_filters
+            Manual values for filtering the subsets.
+
+        Raises
+        ------
+        ValueError
+            In case the auto pick does not reduce the number of subsets to 1.
+
+        Returns
+        -------
+        dict[str, tp.Any]
+            The automatically selected subset.
+        """
+        logger.debug("%s subsets before manual pick", len(subsets))
+        subsets_filtered = list(
+            filter(
+                lambda subset: all(
+                    [
+                        (item[0] not in subset_filters)
+                        or (item[1] == subset_filters[item[0]])
+                        for item in subset.items()
+                    ]
+                ),
+                subsets,
+            )
         )
+        logger.debug("%s subsets after manual pick", len(subsets_filtered))
+
+        df_subsets = pda.DataFrame.from_records(subsets_filtered)
 
         # Sort the dataframe containing the subset using the auto_pick_last keys
         # Unique records of manual_pick keys will be chosen relying on this sort
@@ -929,14 +1007,68 @@ class SubsetsUnmixer:
                 )
                 raise ValueError(msg)
 
-        group_name = tuple(df_subsets.to_records(index=False)[-1])
-        group_name = group_name if len(group_name) > 1 else group_name[0]
-        logger.debug("Subset selected %s", group_name)
-        return subsets.get_group(group_name)
+        subset = df_subsets.iloc[-1].to_dict()
+        logger.info("Picked subset %s", subset)
+        return subset
+
+    def __call__(self, df: pda.DataFrame) -> pda.DataFrame:
+        """Auto pick a subset in the input dataframe.
+
+        Parameters
+        ----------
+        df
+            The input dataframe with possibly multiple subsets.
+
+        Raises
+        ------
+        ValueError
+            In case the auto pick does not reduce the number of subsets to 1.
+
+        Returns
+        -------
+        pandas.DataFrame
+            The reduced dataframe with only one subset.
+        """
+        if len(df) == 0:
+            return df
+
+        # We have a tuple
+        grouping_keys = list(self.partition_keys)
+        df_grouped = df.groupby(
+            # In pandas 2, a list with one single element gave a scalar keys
+            # for the groups. In pandas 3, a future warning is raised,
+            # asking to give either a single key or a list with more than
+            # one key
+            grouping_keys if len(grouping_keys) > 1 else grouping_keys[0],
+            # Pandas 3 tries to sort the groups, which can raise an error if
+            # a column cannot be ordered. We don't need this sort so we
+            # disable it
+            sort=False,
+        )
+
+        # Pick one subset using panda duplicate handling
+        subsets = [
+            (
+                dict(zip(grouping_keys, group))
+                if len(grouping_keys) > 1
+                else {grouping_keys[0]: group}
+            )
+            for group in df_grouped.groups
+        ]
+        subset = self.pick_subset(subsets)
+
+        group_name = tuple(subset[k] for k in grouping_keys)
+        group_name = group_name if len(subset) > 1 else group_name[0]
+        return df_grouped.get_group(group_name)
 
     @property
     def keys(self) -> set[str]:
-        return set(self.partition_keys) | set(self.auto_pick_last)
+        """Alias for the partition keys.
+
+        Used by ``FilesDatabase`` to compare different class to the declared
+        fields in the layouts.
+        """
+        return set(self.partition_keys)
 
 
 @dc.dataclass

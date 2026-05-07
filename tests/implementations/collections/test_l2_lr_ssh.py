@@ -8,6 +8,7 @@ import pytest
 import xarray as xr
 from utils import brute_force_geographical_selection, extract_box_from_polygon
 
+from fcollections.core import PerformanceWarning
 from fcollections.implementations import (
     AVISO_L2_LR_SSH_LAYOUT,
     L2Version,
@@ -732,5 +733,6 @@ def test_subsets_flat(l2_lr_ssh_dir_empty_files: Path):
     ]
 
     db = NetcdfFilesDatabaseSwotLRL2(l2_lr_ssh_dir_empty_files)
-    assert len(db.subsets) == len(expected)
-    assert all([x in expected for x in db.subsets])
+    with pytest.warns(PerformanceWarning):
+        assert len(db.subsets) == len(expected)
+        assert all([x in expected for x in db.subsets])

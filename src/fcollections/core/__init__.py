@@ -29,6 +29,7 @@ from ._filesdb import (
     FilesDatabase,
     IFilterBuilder,
     NotExistingPathError,
+    PerformanceWarning,
     SubsetsUnmixer,
 )
 from ._listing import (
@@ -114,4 +115,5 @@ __all__ = [
     "walk",
     "VisitResult",
     "FileSystemMetadataCollector",
+    "PerformanceWarning",
 ]
