@@ -502,7 +502,7 @@ class FilesDatabase(metaclass=FilesDatabaseMeta):
                     kwargs |= subset_filters
                     unmix = False
                 except IndexError:
-                    logger.debug("No subset, nothing to unmixed")
+                    logger.debug("No subset, nothing to unmix")
                     unmix = False
                 except PerformanceWarning:
                     logger.debug(
@@ -781,6 +781,12 @@ class FilesDatabase(metaclass=FilesDatabaseMeta):
         subsets
             To list the subsets keys.
         """
+        # Implementation note: all branches leading to calling list_files must
+        # raise a PerformanceWarning prior to calling the method. list_files
+        # itself calls filter_values to try unmixing the subsets prior to the
+        # listing. To avoid an recursion error, list_files relies on the emitted
+        # warnings to know that it cannot list the subsets quickly, and must do
+        # the unmixing after the listing instead.
         self._validate_field(filter_name)
         unmix = (
             self.unmixer is not None and filter_name not in self.unmixer.partition_keys
@@ -832,7 +838,7 @@ class FilesDatabase(metaclass=FilesDatabaseMeta):
                 try:
                     kwargs |= self.unmixer.pick_subset(self.subsets, **kwargs)
                 except IndexError:
-                    logger.debug("No subset, nothing to unmixed")
+                    logger.debug("No subset, nothing to unmix")
 
             return {x[0] for x in metadata_collector.discover(**kwargs)}
         except LayoutMismatchError:
@@ -940,7 +946,7 @@ class SubsetsUnmixer:
     def pick_subset(
         self, subsets: list[dict[str, tp.Any]], **subset_filters: tp.Any
     ) -> dict[str, tp.Any]:
-        """Manual and auto pick a subset amongst multiple choices.
+        """Manual and auto pick of a subset amongst multiple choices.
 
         Parameters
         ----------

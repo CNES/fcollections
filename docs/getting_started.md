@@ -112,7 +112,8 @@ optimal performance, this method should be called with the layouts enabled, with
 files organized with folders (see the [advanced section](#disable-layouts)), and
 on filters whose information is encoded in the folders.
 
-In case you are working on a small set of data, it is safely ignore this warning
+In case you are working on a small set of data, it is safe to ignore this
+warning
 
 ```{code-cell}
 from fcollections.core import PerformanceWarning
