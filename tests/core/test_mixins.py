@@ -1,9 +1,9 @@
+import typing as tp
 from pathlib import Path
 from unittest.mock import Mock
 
 import fsspec.implementations.memory as fs_mem
 import numpy as np
-import pandas as pda
 import pytest
 
 from fcollections.core import DiscreteTimesMixin, DownloadMixin, PeriodMixin
@@ -12,8 +12,8 @@ from fcollections.time import Period
 
 class PeriodMixinEmpty(PeriodMixin):
 
-    def list_files(self, *args, **kwargs):
-        return pda.DataFrame([], columns=["time", "filename"])
+    def filter_values(self, filter_name: str, *args, **kwargs) -> set[tp.Any]:
+        return set()
 
 
 def test_period_mixin_empty():
@@ -24,45 +24,30 @@ def test_period_mixin_empty():
 
 class PeriodMixinStub(PeriodMixin):
 
-    def list_files(self, *args, **kwargs):
-        return pda.DataFrame(
-            [
-                (
-                    Period(
-                        np.datetime64("2024-01-01"),
-                        np.datetime64("2024-01-02"),
-                        include_stop=False,
-                    ),
-                    "f1",
-                ),
-                (
-                    Period(
-                        np.datetime64("2024-01-02"),
-                        np.datetime64("2024-01-03"),
-                        include_stop=False,
-                    ),
-                    "f2",
-                ),
-                (
-                    Period(
-                        np.datetime64("2024-01-04"),
-                        np.datetime64("2024-01-05"),
-                        include_stop=False,
-                    ),
-                    "f3",
-                ),
-                (
-                    Period(
-                        np.datetime64("2024-01-10"),
-                        np.datetime64("2024-01-20"),
-                        include_start=False,
-                        include_stop=False,
-                    ),
-                    "f4",
-                ),
-            ],
-            columns=["time", "filename"],
-        )
+    def filter_values(self, field_name: str, *args, **kwargs) -> set[tp.Any]:
+        return {
+            Period(
+                np.datetime64("2024-01-01"),
+                np.datetime64("2024-01-02"),
+                include_stop=False,
+            ),
+            Period(
+                np.datetime64("2024-01-02"),
+                np.datetime64("2024-01-03"),
+                include_stop=False,
+            ),
+            Period(
+                np.datetime64("2024-01-04"),
+                np.datetime64("2024-01-05"),
+                include_stop=False,
+            ),
+            Period(
+                np.datetime64("2024-01-10"),
+                np.datetime64("2024-01-20"),
+                include_start=False,
+                include_stop=False,
+            ),
+        }
 
 
 def test_period_mixin():
@@ -80,8 +65,8 @@ def test_period_mixin():
 
 class DiscreteTimesEmpty(DiscreteTimesMixin):
 
-    def list_files(self, *args, **kwargs):
-        return pda.DataFrame([], columns=["time", "filename"])
+    def filter_values(self, field_name: str, *args, **kwargs) -> set[tp.Any]:
+        return set()
 
 
 def test_discrete_times_mixin_empty():
@@ -92,16 +77,13 @@ def test_discrete_times_mixin_empty():
 
 class DiscreteTimesStub(DiscreteTimesMixin):
 
-    def list_files(self, *args, **kwargs):
-        return pda.DataFrame(
-            [
-                (np.datetime64("2024-01-01"), "f1"),
-                (np.datetime64("2024-01-02"), "f2"),
-                (np.datetime64("2024-01-04"), "f3"),
-                (np.datetime64("2024-01-10"), "f4"),
-            ],
-            columns=["time", "filename"],
-        )
+    def filter_values(self, *args, **kwargs) -> set[tp.Any]:
+        return {
+            np.datetime64("2024-01-01"),
+            np.datetime64("2024-01-02"),
+            np.datetime64("2024-01-04"),
+            np.datetime64("2024-01-10"),
+        }
 
 
 def test_discrete_times_mixin():

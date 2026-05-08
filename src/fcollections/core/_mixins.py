@@ -25,7 +25,14 @@ if tp.TYPE_CHECKING:  # pragma: no cover
 logger = logging.getLogger(__name__)
 
 
-def suppress_performance_warning(func):
+def suppress_performance_warning(func: tp.Callable) -> tp.Callable:
+    """Suppress PerformanceWarning when calling the input function.
+
+    Returns
+    -------
+    tp.Callable
+        The patched function with suppressed PerformanceWarning
+    """
 
     @functools.wraps(func)
     def suppressed(*args, **kwargs):
@@ -116,13 +123,47 @@ class DiscreteTimesMixin(ITemporalMixin):
 
 
 class HalfOrbitMixin:
+    """Mixin extending FilesDatabase with methods working on half orbits."""
+
+    def filter_values(self, filter_name: str, **kwargs) -> set[tp.Any]:
+        """The mixin relies on this method to build new functionalities."""
 
     def cycle_range(self, **filters) -> tuple[int, int]:
+        """Extract the cycle range.
+
+        Parameters
+        ----------
+        filters
+            Set of filters to apply prior to extract the cycle range. This can
+            be used to pass the mandatory filters for selecting a single subset,
+            or to extract the cycle range for a single mission phase.
+
+        Returns
+        -------
+        tuple[int, int]
+            The first and last cycle matching the selection.
+        """
         cycles = sorted(self.filter_values("cycle_number", **filters))
         return cycles[0], cycles[-1]
 
     @suppress_performance_warning
     def half_orbit_range(self, **filters) -> tuple[tuple[int, int], tuple[int, int]]:
+        """Extract the half orbits range.
+
+        Parameters
+        ----------
+        filters
+            Set of filters to apply prior to extract the half orbits range. This
+            can be used to pass the mandatory filters for selecting a single
+            subset, or to extract the half orbits range for a single mission
+            phase.
+
+        Returns
+        -------
+        tuple[tuple[int, int], tuple[int, int]]
+            Two pairs of (cycle_number, pass_number) numbering the first and
+            last half orbit of the selection.
+        """
         first_cycle, last_cycle = self.cycle_range(**filters)
 
         for filter_builder in self.filter_builders:
@@ -138,20 +179,78 @@ class HalfOrbitMixin:
         return (first_cycle, first_pass), (last_cycle, last_pass)
 
     def time_coverage(self, **filters) -> Period | None:
+        """Extract the time coverage.
+
+        The mixin implementation expects that the files will be grouped by
+        cycles in folders. This property can be used to first get the first and
+        last cycles, before listing the times for these two cycles. This is much
+        faster than getting the times for all the cycles.
+
+        In case the hypothesis is not True (ie. folders do not contain the cycle
+        number information), we fall back to the classic implementation which is
+        slower.
+
+        In addition, `cycle_number` ordering can break if multiple mission
+        phases are mixed in the selection. This will usually lead to an
+        inconsistent Period, which will again make the method fall back to the
+        default implementation.
+
+        Parameters
+        ----------
+        filters
+            Set of filters to apply prior to extract the time coverage. This
+            can be used to pass the mandatory filters for selecting a single
+            subset, or to extract the time coverage for a single mission phase.
+
+        Returns
+        -------
+        tuple[tuple[int, int], tuple[int, int]]
+            Two pairs of (cycle_number, pass_number) numbering the first and
+            last half orbit of the selection.
+        """
         with warnings.catch_warnings():
             warnings.simplefilter("error", PerformanceWarning)
 
             try:
                 cycle_range = self.cycle_range(**filters)
-                for filter_builder in self.filter_builders:
-                    if filter_builder.target_fields() == ("cycle_number",):
-                        filters.pop(filter_builder.parameter().name, None)
-                filters["cycle_number"] = list(cycle_range)
-            except PerformanceWarning:
-                # Don't try to accelerate if we must fall back to a slow listing
-                pass
 
-        return super().time_coverage(**filters)
+                # The input filters will probably give a range for selecting a
+                # mission phase. Mission phase filters work on the cycle_number
+                # variable, and giving filters on the same variable will raise
+                # an error in the filter_values method. We must remove all
+                # filters working on the cycle_number variable.
+                edited_filters = filters.copy()
+                for filter_builder in self.filter_builders:
+                    if "cycle_number" in filter_builder.target_fields():
+                        logger.debug(
+                            "Removed filter `%s` working on the "
+                            "`cycle_number` variable",
+                            filter_builder.parameter().name,
+                        )
+                        edited_filters.pop(filter_builder.parameter().name, None)
+                edited_filters["cycle_number"] = list(cycle_range)
+            except PerformanceWarning:
+                # Don't try to accelerate, we must fall back to a slow listing
+                logger.debug(
+                    "Shortcut using the `cycle_number` variable failed, "
+                    "falling back listing `time` values without filters."
+                )
+
+        try:
+            return super().time_coverage(**edited_filters)
+        except ValueError:
+            # ValueError is raised if the period start > stop. This can arise if
+            # the cycle_number variable has a different order than the time
+            # variable. An example is the SWOT mission where the first mission
+            # phase CALVAL is numbered [400-600] whereas the second mission
+            # phase SCIENCE is numbered [1-399]. This sorting break will cause
+            # an inconsistent period, in which case we need to fall back to a
+            # full scan
+            logger.debug(
+                "Shortcut using the `cycle_number` variable failed, "
+                "falling back listing `time` values without filters."
+            )
+            return super().time_coverage(**filters)
 
 
 class DownloadMixin(abc.ABC):

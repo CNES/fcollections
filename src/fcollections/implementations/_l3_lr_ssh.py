@@ -120,7 +120,7 @@ class BasicNetcdfFilesDatabaseSwotLRL3(FilesDatabase, HalfOrbitMixin, PeriodMixi
     Note
     ----
     HalfOrbitMixin overrides the temporal coverage access (it is usually faster)
-    so it must be declared prior to the PeriodMixin
+    so it must be declared prior to the PeriodMixin.
     """
 
     layouts = [
