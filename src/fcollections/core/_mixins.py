@@ -122,13 +122,14 @@ class DiscreteTimesMixin(ITemporalMixin):
         return Period(times[0], times[-1])
 
 
-class HalfOrbitMixin:
+class HalfOrbitMixin(abc.ABC):
     """Mixin extending FilesDatabase with methods working on half orbits."""
 
+    @abc.abstractmethod
     def filter_values(self, filter_name: str, **kwargs) -> set[tp.Any]:
         """The mixin relies on this method to build new functionalities."""
 
-    def cycle_range(self, **filters) -> tuple[int, int]:
+    def cycle_range(self, **filters) -> tuple[int, int] | None:
         """Extract the cycle range.
 
         Parameters
@@ -140,14 +141,17 @@ class HalfOrbitMixin:
 
         Returns
         -------
-        tuple[int, int]
-            The first and last cycle matching the selection.
+        tuple[int, int] | None
+            The first and last cycle matching the selection, or None if there is
+            no data.
         """
         cycles = sorted(self.filter_values("cycle_number", **filters))
-        return cycles[0], cycles[-1]
+        return (cycles[0], cycles[-1]) if len(cycles) >= 1 else None
 
     @suppress_performance_warning
-    def half_orbit_range(self, **filters) -> tuple[tuple[int, int], tuple[int, int]]:
+    def half_orbit_range(
+        self, **filters
+    ) -> tuple[tuple[int, int], tuple[int, int]] | None:
         """Extract the half orbits range.
 
         Parameters
@@ -160,21 +164,23 @@ class HalfOrbitMixin:
 
         Returns
         -------
-        tuple[tuple[int, int], tuple[int, int]]
+        tuple[tuple[int, int], tuple[int, int]] | None
             Two pairs of (cycle_number, pass_number) numbering the first and
-            last half orbit of the selection.
+            last half orbit of the selection, or None if there are no half
+            orbits.
         """
-        first_cycle, last_cycle = self.cycle_range(**filters)
+        try:
+            first_cycle, last_cycle = self.cycle_range(**filters)
+        except TypeError:
+            return None
 
-        for filter_builder in self.filter_builders:
-            if filter_builder.target_fields() == ("cycle_number",):
-                filters.pop(filter_builder.parameter().name, None)
+        edited_filters = self._clean_filters(filters)
 
-        filters["cycle_number"] = first_cycle
-        first_pass = sorted(self.filter_values("pass_number", **filters))[0]
+        edited_filters["cycle_number"] = first_cycle
+        first_pass = sorted(self.filter_values("pass_number", **edited_filters))[0]
 
-        filters["cycle_number"] = last_cycle
-        last_pass = sorted(self.filter_values("pass_number", **filters))[-1]
+        edited_filters["cycle_number"] = last_cycle
+        last_pass = sorted(self.filter_values("pass_number", **edited_filters))[-1]
 
         return (first_cycle, first_pass), (last_cycle, last_pass)
 
@@ -206,51 +212,60 @@ class HalfOrbitMixin:
         -------
         tuple[tuple[int, int], tuple[int, int]]
             Two pairs of (cycle_number, pass_number) numbering the first and
-            last half orbit of the selection.
+            last half orbit of the selection, or None if there is no data.
         """
         with warnings.catch_warnings():
             warnings.simplefilter("error", PerformanceWarning)
 
             try:
                 cycle_range = self.cycle_range(**filters)
+                if cycle_range is None:
+                    return None
 
-                # The input filters will probably give a range for selecting a
-                # mission phase. Mission phase filters work on the cycle_number
-                # variable, and giving filters on the same variable will raise
-                # an error in the filter_values method. We must remove all
-                # filters working on the cycle_number variable.
-                edited_filters = filters.copy()
-                for filter_builder in self.filter_builders:
-                    if "cycle_number" in filter_builder.target_fields():
-                        logger.debug(
-                            "Removed filter `%s` working on the "
-                            "`cycle_number` variable",
-                            filter_builder.parameter().name,
-                        )
-                        edited_filters.pop(filter_builder.parameter().name, None)
-                edited_filters["cycle_number"] = list(cycle_range)
-            except PerformanceWarning:
+                edited_filters = self._clean_filters(filters)
+                edited_filters["cycle_number"] = min(cycle_range)
+                first_period = super().time_coverage(**edited_filters)
+
+                edited_filters["cycle_number"] = max(cycle_range)
+                last_period = super().time_coverage(**edited_filters)
+
+                return Period(
+                    first_period.start,
+                    last_period.stop,
+                    include_start=first_period.include_start,
+                    include_stop=last_period.include_stop,
+                )
+
+            except (PerformanceWarning, ValueError):
                 # Don't try to accelerate, we must fall back to a slow listing
+                # ValueError is raised if the period start > stop. This can arise if
+                # the cycle_number variable has a different order than the time
+                # variable. An example is the SWOT mission where the first mission
+                # phase CALVAL is numbered [400-600] whereas the second mission
+                # phase SCIENCE is numbered [1-399]. This sorting break will cause
+                # an inconsistent period, in which case we need to fall back to a
+                # full scan
                 logger.debug(
                     "Shortcut using the `cycle_number` variable failed, "
                     "falling back listing `time` values without filters."
                 )
+                return super().time_coverage(**filters)
 
-        try:
-            return super().time_coverage(**edited_filters)
-        except ValueError:
-            # ValueError is raised if the period start > stop. This can arise if
-            # the cycle_number variable has a different order than the time
-            # variable. An example is the SWOT mission where the first mission
-            # phase CALVAL is numbered [400-600] whereas the second mission
-            # phase SCIENCE is numbered [1-399]. This sorting break will cause
-            # an inconsistent period, in which case we need to fall back to a
-            # full scan
-            logger.debug(
-                "Shortcut using the `cycle_number` variable failed, "
-                "falling back listing `time` values without filters."
-            )
-            return super().time_coverage(**filters)
+    def _clean_filters(self, filters: dict[str, tp.Any]) -> dict[str, tp.Any]:
+        # The input filters will probably give a range for selecting a
+        # mission phase. Mission phase filters work on the cycle_number
+        # variable, and giving filters on the same variable will raise
+        # an error in the filter_values method. We must remove all
+        # filters working on the cycle_number variable.
+        edited_filters = filters.copy()
+        for filter_builder in self.filter_builders:
+            if "cycle_number" in filter_builder.target_fields():
+                logger.debug(
+                    "Removed filter `%s` working on the " "`cycle_number` variable",
+                    filter_builder.parameter().name,
+                )
+                edited_filters.pop(filter_builder.parameter().name, None)
+        return edited_filters
 
 
 class DownloadMixin(abc.ABC):
