@@ -498,24 +498,7 @@ class FilesDatabase(metaclass=FilesDatabaseMeta):
             with warnings.catch_warnings():
                 warnings.simplefilter("error", category=PerformanceWarning)
                 try:
-                    # Sanitize field before
-                    file_name_convention = self.layouts[0].conventions[-1]
-
-                    sanitized_subset_parameters = {
-                        field_name: file_name_convention.get_field(field_name).sanitize(
-                            reference_value
-                        )
-                        for field_name, reference_value in kwargs.items()
-                        if field_name in self.unmixer.partition_keys
-                    }
-
-                    subset_filters = self.unmixer.pick_subset(
-                        self.subsets, **sanitized_subset_parameters
-                    )
-                    kwargs |= subset_filters
-                    unmix = False
-                except IndexError:
-                    logger.debug("No subset, nothing to unmix")
+                    self._pick_subset_before_files_scan(kwargs)
                     unmix = False
                 except PerformanceWarning:
                     logger.debug(
@@ -856,24 +839,8 @@ class FilesDatabase(metaclass=FilesDatabaseMeta):
             # there is an ambiguity. We need the subsets list whether the listing
             # is quick or slow. In case of a slow computation of subsets, a
             # warning will be emitted
-            if unmix:
-                try:
-                    # Sanitize field before
-                    file_name_convention = self.layouts[0].conventions[-1]
-
-                    sanitized_subset_parameters = {
-                        field_name: file_name_convention.get_field(field_name).sanitize(
-                            reference_value
-                        )
-                        for field_name, reference_value in kwargs.items()
-                        if field_name in self.unmixer.partition_keys
-                    }
-
-                    kwargs |= self.unmixer.pick_subset(
-                        self.subsets, **sanitized_subset_parameters
-                    )
-                except IndexError:
-                    logger.debug("No subset, nothing to unmix")
+            if unmix and self.unmixer is not None:
+                self._pick_subset_before_files_scan(kwargs)
 
             _, kwargs = self._auto_build_predicates_and_filters([], kwargs)
             return {x[0] for x in metadata_collector.discover(**kwargs)}
@@ -887,6 +854,43 @@ class FilesDatabase(metaclass=FilesDatabaseMeta):
             )
             warnings.warn(msg, PerformanceWarning)
             return set(self.list_files(**kwargs, unmix=unmix)[filter_name])
+
+    def _pick_subset_before_files_scan(self, filters: dict[str, tp.Any]):
+        """Pick a subset without listing the files metadata.
+
+        Listing the files metadata can be costly. If possible, we wish to
+        determine the subset by parsing the information in the folders.
+
+        Parameters
+        ----------
+        filters
+            Filters that needs to be applied on the files. These should also
+            contain the mandatory filters for subset selection. This parameter
+            is modified in place to add the automatically set filters for the
+            subset (refer to :attr:`SubsetUnmixer.auto_pick_last`)
+
+        Warns
+        -----
+        PerformanceWarning
+            In case the subset information cannot be found in the folders.
+        """
+        try:
+            # Sanitize field before
+            file_name_convention = self.layouts[0].conventions[-1]
+
+            sanitized_subset_parameters = {
+                field_name: file_name_convention.get_field(field_name).sanitize(
+                    reference_value
+                )
+                for field_name, reference_value in filters.items()
+                if field_name in self.unmixer.partition_keys
+            }
+
+            filters |= self.unmixer.pick_subset(
+                self.subsets, **sanitized_subset_parameters
+            )
+        except IndexError:
+            logger.debug("No subset, nothing to unmix")
 
     def _validate_field(self, filter_name: str):
         """Check a field is declared in one of the layouts.
@@ -1174,4 +1178,15 @@ class IFilterBuilder(abc.ABC):
     @classmethod
     @abc.abstractmethod
     def target_fields(cls) -> tuple[str, ...]:
-        """"""
+        """Target fields of the predicate.
+
+        The target fields determines which part of a metadata record (related
+        information about one file) is used. This can be useful to detect
+        incompatibilities between the predicate filtering, and more classic
+        filtering.
+
+        Returns
+        -------
+        tuple[str, ...]
+            Field names used by the predicate to filter a record.
+        """
