@@ -498,7 +498,20 @@ class FilesDatabase(metaclass=FilesDatabaseMeta):
             with warnings.catch_warnings():
                 warnings.simplefilter("error", category=PerformanceWarning)
                 try:
-                    subset_filters = self.unmixer.pick_subset(self.subsets, **kwargs)
+                    # Sanitize field before
+                    file_name_convention = self.layouts[0].conventions[-1]
+
+                    sanitized_subset_parameters = {
+                        field_name: file_name_convention.get_field(field_name).sanitize(
+                            reference_value
+                        )
+                        for field_name, reference_value in kwargs.items()
+                        if field_name in self.unmixer.partition_keys
+                    }
+
+                    subset_filters = self.unmixer.pick_subset(
+                        self.subsets, **sanitized_subset_parameters
+                    )
                     kwargs |= subset_filters
                     unmix = False
                 except IndexError:
@@ -509,6 +522,40 @@ class FilesDatabase(metaclass=FilesDatabaseMeta):
                         "Subset unmixing could not be done before the files scan: it will be done after."
                     )
 
+        predicates, kwargs = self._auto_build_predicates_and_filters(predicates, kwargs)
+
+        df = self.discoverer.to_dataframe(
+            predicates=predicates,
+            stat_fields=stat_fields,
+            enable_layouts=self.enable_layouts,
+            **{k: kwargs[k] for k in kwargs if k in self.listing_parameters},
+        )
+
+        postprocesses = map(
+            lambda item: item[1],
+            filter(
+                lambda item: item[0],
+                [
+                    (unmix and self.unmixer is not None, self.unmixer),
+                    (deduplicate and self.deduplicator is not None, self.deduplicator),
+                    (
+                        sort and self.sort_keys is not None,
+                        lambda df: df.sort_values(self.sort_keys, ignore_index=True),
+                    ),
+                ],
+            ),
+        )
+
+        for postprocess in postprocesses:
+            df = postprocess(df)
+
+        return df
+
+    def _auto_build_predicates_and_filters(
+        self,
+        predicates: tp.Iterable[tp.Callable[[tuple[tp.Any, ...]], bool]],
+        kwargs,
+    ):
         # Auto-build declared predicates and additionnal filters.
         predicates = list(predicates)
         if self.filter_builders is not None:
@@ -559,32 +606,7 @@ class FilesDatabase(metaclass=FilesDatabaseMeta):
                         filters.keys(),
                     )
 
-        df = self.discoverer.to_dataframe(
-            predicates=predicates,
-            stat_fields=stat_fields,
-            enable_layouts=self.enable_layouts,
-            **{k: kwargs[k] for k in kwargs if k in self.listing_parameters},
-        )
-
-        postprocesses = map(
-            lambda item: item[1],
-            filter(
-                lambda item: item[0],
-                [
-                    (unmix and self.unmixer is not None, self.unmixer),
-                    (deduplicate and self.deduplicator is not None, self.deduplicator),
-                    (
-                        sort and self.sort_keys is not None,
-                        lambda df: df.sort_values(self.sort_keys, ignore_index=True),
-                    ),
-                ],
-            ),
-        )
-
-        for postprocess in postprocesses:
-            df = postprocess(df)
-
-        return df
+        return predicates, kwargs
 
     def _query(self, **kwargs) -> xr_t.Dataset | None:
         """Query a dataset by reading selected files in file system.
@@ -836,10 +858,24 @@ class FilesDatabase(metaclass=FilesDatabaseMeta):
             # warning will be emitted
             if unmix:
                 try:
-                    kwargs |= self.unmixer.pick_subset(self.subsets, **kwargs)
+                    # Sanitize field before
+                    file_name_convention = self.layouts[0].conventions[-1]
+
+                    sanitized_subset_parameters = {
+                        field_name: file_name_convention.get_field(field_name).sanitize(
+                            reference_value
+                        )
+                        for field_name, reference_value in kwargs.items()
+                        if field_name in self.unmixer.partition_keys
+                    }
+
+                    kwargs |= self.unmixer.pick_subset(
+                        self.subsets, **sanitized_subset_parameters
+                    )
                 except IndexError:
                     logger.debug("No subset, nothing to unmix")
 
+            _, kwargs = self._auto_build_predicates_and_filters([], kwargs)
             return {x[0] for x in metadata_collector.discover(**kwargs)}
         except LayoutMismatchError:
             msg = (
@@ -1134,3 +1170,8 @@ class IFilterBuilder(abc.ABC):
     @abc.abstractmethod
     def parameter(cls) -> FileNameField:
         """Initialization parameter for the class."""
+
+    @classmethod
+    @abc.abstractmethod
+    def target_fields(cls) -> tuple[str, ...]:
+        """"""

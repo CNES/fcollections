@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import abc
+import functools
 import logging
 import os
 import typing as tp
@@ -16,17 +17,29 @@ from fcollections.time import (
     times_holes,
 )
 
+from ._filesdb import PerformanceWarning
+
 if tp.TYPE_CHECKING:  # pragma: no cover
     import numpy as np
-    import pandas as pda_t
 
 logger = logging.getLogger(__name__)
+
+
+def suppress_performance_warning(func):
+
+    @functools.wraps(func)
+    def suppressed(*args, **kwargs):
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", PerformanceWarning)
+            return func(*args, **kwargs)
+
+    return suppressed
 
 
 class ITemporalMixin(abc.ABC):
 
     @abc.abstractmethod
-    def list_files(self, *args, **kwargs) -> pda_t.DataFrame:
+    def filter_values(self, filter_name: str, **kwargs) -> set[tp.Any]:
         """The mixin relies on this method to build new functionalities."""
 
     @abc.abstractmethod
@@ -52,16 +65,22 @@ class ITemporalMixin(abc.ABC):
 
 class PeriodMixin(ITemporalMixin):
 
+    @suppress_performance_warning
     def time_holes(self, **filters) -> tp.Generator[Period, None, None]:
-        periods = sorted(self.list_files(**filters)["time"].values)
+        periods = sorted(self.filter_values("time", **filters))
+
         if len(periods) == 0:
+            logger.info("All data filtered out with %s", filters)
             return []
         reduced = fuse_successive_periods(periods)
         return periods_holes(reduced)
 
+    @suppress_performance_warning
     def time_coverage(self, **filters) -> Period | None:
-        periods = sorted(self.list_files(**filters)["time"].values)
+        periods = sorted(self.filter_values("time", **filters))
+
         if len(periods) == 0:
+            logger.info("All data filtered out with %s", filters)
             return None
         return periods_envelop(periods)
 
@@ -71,22 +90,68 @@ class DiscreteTimesMixin(ITemporalMixin):
     def __init__(self, sampling: np.timedelta64 | None = None):
         self.sampling = sampling
 
+    @suppress_performance_warning
     def time_holes(self, **filters) -> tp.Generator[Period, None, None]:
         if self.sampling is None:
             msg = """No sampling specified, holes detection in the time serie
             cannot proceed"""
             warnings.warn(msg)
             return []
-        times = sorted(self.list_files(**filters)["time"].values)
+
+        times = sorted(self.filter_values("time", **filters))
+
         if len(times) == 0:
+            logger.info("All data filtered out with %s", filters)
             return []
         return times_holes(times, self.sampling)
 
+    @suppress_performance_warning
     def time_coverage(self, **filters) -> Period | None:
-        times = sorted(self.list_files(**filters)["time"].values)
+        times = sorted(self.filter_values("time", **filters))
+
         if len(times) == 0:
+            logger.info("All data filtered out with %s", filters)
             return None
         return Period(times[0], times[-1])
+
+
+class HalfOrbitMixin:
+
+    def cycle_range(self, **filters) -> tuple[int, int]:
+        cycles = sorted(self.filter_values("cycle_number", **filters))
+        return cycles[0], cycles[-1]
+
+    @suppress_performance_warning
+    def half_orbit_range(self, **filters) -> tuple[tuple[int, int], tuple[int, int]]:
+        first_cycle, last_cycle = self.cycle_range(**filters)
+
+        for filter_builder in self.filter_builders:
+            if filter_builder.target_fields() == ("cycle_number",):
+                filters.pop(filter_builder.parameter().name, None)
+
+        filters["cycle_number"] = first_cycle
+        first_pass = sorted(self.filter_values("pass_number", **filters))[0]
+
+        filters["cycle_number"] = last_cycle
+        last_pass = sorted(self.filter_values("pass_number", **filters))[-1]
+
+        return (first_cycle, first_pass), (last_cycle, last_pass)
+
+    def time_coverage(self, **filters) -> Period | None:
+        with warnings.catch_warnings():
+            warnings.simplefilter("error", PerformanceWarning)
+
+            try:
+                cycle_range = self.cycle_range(**filters)
+                for filter_builder in self.filter_builders:
+                    if filter_builder.target_fields() == ("cycle_number",):
+                        filters.pop(filter_builder.parameter().name, None)
+                filters["cycle_number"] = list(cycle_range)
+            except PerformanceWarning:
+                # Don't try to accelerate if we must fall back to a slow listing
+                pass
+
+        return super().time_coverage(**filters)
 
 
 class DownloadMixin(abc.ABC):
