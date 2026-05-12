@@ -16,6 +16,7 @@ from fcollections.core import (
     FileNameFieldPeriod,
     FileNameFieldString,
     FilesDatabase,
+    HalfOrbitMixin,
     ICodec,
     Layout,
     PeriodMixin,
@@ -561,9 +562,15 @@ AVISO_L2_LR_SSH_LAYOUT = Layout(
 )
 
 
-class BasicNetcdfFilesDatabaseSwotLRL2(FilesDatabase, PeriodMixin):
+class BasicNetcdfFilesDatabaseSwotLRL2(FilesDatabase, HalfOrbitMixin, PeriodMixin):
     """Database mapping to select and read Swot LR L2 Netcdf files in a local
-    file system."""
+    file system.
+
+    Note
+    ----
+    HalfOrbitMixin overrides the temporal coverage access (it is usually faster)
+    so it must be declared prior to the PeriodMixin.
+    """
 
     layouts = [Layout([FileNameConventionSwotL2()]), AVISO_L2_LR_SSH_LAYOUT]
     reader = SwotReaderL2LRSSH()

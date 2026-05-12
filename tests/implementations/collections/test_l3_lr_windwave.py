@@ -1,5 +1,6 @@
 import os
 import typing as tp
+from contextlib import nullcontext
 from pathlib import Path
 
 import numpy as np
@@ -8,7 +9,7 @@ import xarray as xr
 from fsspec.implementations.local import LocalFileSystem
 from utils import brute_force_geographical_selection
 
-from fcollections.core import DirNode, FileSystemMetadataCollector
+from fcollections.core import DirNode, FileSystemMetadataCollector, PerformanceWarning
 from fcollections.implementations import (
     AVISO_L3_LR_WINDWAVE_LAYOUT,
     NetcdfFilesDatabaseSwotLRWW,
@@ -412,3 +413,89 @@ class TestLayout:
         expected = {os.path.basename(l3_lr_ww_files[ii]) for ii in expected}
         assert len(expected) > 0
         assert expected == actual
+
+
+class TestHalfOrbitMixin:
+
+    @pytest.mark.parametrize(
+        "enable_layouts, filters, context, expected",
+        [
+            (True, {}, pytest.raises(ValueError, match="unmixed"), None),
+            (False, {}, pytest.raises(ValueError, match="unmixed"), None),
+            (True, {"subset": "Light"}, nullcontext(), ((482, 11), (482, 12))),
+            (False, {"subset": "Light"}, nullcontext(), ((482, 11), (482, 12))),
+            (
+                True,
+                {"subset": "Light", "pass_number": 11},
+                nullcontext(),
+                ((482, 11), (482, 11)),
+            ),
+            (
+                False,
+                {"subset": "Light", "pass_number": 11},
+                nullcontext(),
+                ((482, 11), (482, 11)),
+            ),
+            (
+                True,
+                {"subset": "Extended", "phase": "SCIENCE"},
+                nullcontext(),
+                ((10, 10), (10, 10)),
+            ),
+            (
+                False,
+                {"subset": "Extended", "phase": "SCIENCE"},
+                nullcontext(),
+                ((10, 10), (10, 10)),
+            ),
+            (True, {"subset": "Extended", "phase": "CALVAL"}, nullcontext(), None),
+            (False, {"subset": "Extended", "phase": "CALVAL"}, nullcontext(), None),
+        ],
+        ids=[
+            "missing_subset_key_layout",
+            "missing_subset_key_no_layout",
+            "auto_version_key_layout",
+            "auto_version_key_no_layout_warns",
+            "filtered_range_layout",
+            "filtered_range_no_layout",
+            "range_for_phase_layout",
+            "range_for_phase_no_layout",
+            "no_data_layout",
+            "no_data_no_layout",
+        ],
+    )
+    def test_half_orbit_range(
+        self,
+        l3_lr_ww_dir_layout: Path,
+        enable_layouts: bool,
+        filters: dict[str, tp.Any],
+        context,
+        expected: tuple[tuple[int, int], tuple[int, int]] | None,
+    ):
+        db = NetcdfFilesDatabaseSwotLRWW(
+            l3_lr_ww_dir_layout, enable_layouts=enable_layouts
+        )
+        with context:
+            assert db.half_orbit_range(**filters) == expected
+
+    @pytest.mark.parametrize("enable_layouts", [True, False])
+    def test_temporal_coverage(self, l3_lr_ww_dir_layout: Path, enable_layouts: bool):
+        db = NetcdfFilesDatabaseSwotLRWW(
+            l3_lr_ww_dir_layout, enable_layouts=enable_layouts
+        )
+        assert db.time_coverage(subset="Extended") == Period(
+            np.datetime64("2024-01-25T02:53:52"), np.datetime64("2024-01-25T03:44:38")
+        )
+
+    @pytest.mark.parametrize(
+        "enable_layouts, context",
+        [(True, nullcontext()), (False, pytest.warns(PerformanceWarning))],
+    )
+    def test_cycle_range(
+        self, l3_lr_ww_dir_layout: Path, enable_layouts: bool, context
+    ):
+        db = NetcdfFilesDatabaseSwotLRWW(
+            l3_lr_ww_dir_layout, enable_layouts=enable_layouts
+        )
+        with context:
+            assert db.cycle_range(subset="Light") == (482, 482)

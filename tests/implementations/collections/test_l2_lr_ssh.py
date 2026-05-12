@@ -736,3 +736,63 @@ def test_subsets_flat(l2_lr_ssh_dir_empty_files: Path):
     with pytest.warns(PerformanceWarning):
         assert len(db.subsets) == len(expected)
         assert all([x in expected for x in db.subsets])
+
+
+class TestHalfOrbitMixin:
+
+    def test_subsets_mixed(self, l2_lr_ssh_dir: Path):
+        db = NetcdfFilesDatabaseSwotLRL2(l2_lr_ssh_dir, enable_layouts=False)
+        with pytest.raises(ValueError, match="unmixed"):
+            db.half_orbit_range()
+
+    def test_half_orbit_range(self, l2_lr_ssh_dir: Path):
+        db = NetcdfFilesDatabaseSwotLRL2(l2_lr_ssh_dir, enable_layouts=False)
+        assert db.half_orbit_range(subset="Basic") == ((482, 11), (546, 11))
+
+    def test_half_orbit_range_filtered(self, l2_lr_ssh_dir: Path):
+        db = NetcdfFilesDatabaseSwotLRL2(l2_lr_ssh_dir, enable_layouts=False)
+        assert db.half_orbit_range(subset="Basic", version="P?C?") == (
+            (482, 11),
+            (483, 26),
+        )
+
+    def test_half_orbit_range_phase(self, l2_lr_ssh_dir: Path):
+        db = NetcdfFilesDatabaseSwotLRL2(l2_lr_ssh_dir, enable_layouts=False)
+        assert db.half_orbit_range(subset="Expert", phase="SCIENCE") == (
+            (6, 11),
+            (7, 533),
+        )
+
+    def test_half_orbit_range_phase_empty(self, l2_lr_ssh_dir: Path):
+        db = NetcdfFilesDatabaseSwotLRL2(l2_lr_ssh_dir, enable_layouts=False)
+        assert db.half_orbit_range(subset="Basic", phase="SCIENCE") is None
+
+    def test_half_orbit_range_phase_layout(
+        self, l2_lr_ssh_dir_empty_files_layout: Path
+    ):
+        db = NetcdfFilesDatabaseSwotLRL2(l2_lr_ssh_dir_empty_files_layout)
+        assert db.half_orbit_range(subset="Expert", phase="SCIENCE") == (
+            (6, 11),
+            (7, 533),
+        )
+
+    def test_temporal_coverage(self, l2_lr_ssh_dir: Path):
+        db = NetcdfFilesDatabaseSwotLRL2(l2_lr_ssh_dir, enable_layouts=False)
+        assert db.time_coverage(subset="Unsmoothed") == Period(
+            np.datetime64("2024-01-25T02:53:52"), np.datetime64("2024-01-25T03:44:38")
+        )
+
+    def test_temporal_coverage_layout(self, l2_lr_ssh_dir_empty_files_layout: Path):
+        db = NetcdfFilesDatabaseSwotLRL2(l2_lr_ssh_dir_empty_files_layout)
+        assert db.time_coverage(subset="Unsmoothed") == Period(
+            np.datetime64("2024-01-25T02:53:52"), np.datetime64("2024-01-25T03:44:38")
+        )
+
+    def test_cycle_range(self, l2_lr_ssh_dir: Path):
+        db = NetcdfFilesDatabaseSwotLRL2(l2_lr_ssh_dir, enable_layouts=False)
+        with pytest.warns(PerformanceWarning):
+            assert db.cycle_range(subset="Expert") == (6, 577)
+
+    def test_cycle_range_layout(self, l2_lr_ssh_dir_empty_files_layout: Path):
+        db = NetcdfFilesDatabaseSwotLRL2(l2_lr_ssh_dir_empty_files_layout)
+        assert db.cycle_range(subset="Expert") == (6, 577)

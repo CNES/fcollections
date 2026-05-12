@@ -842,8 +842,11 @@ class FilesDatabase(metaclass=FilesDatabaseMeta):
             if unmix and self.unmixer is not None:
                 self._pick_subset_before_files_scan(kwargs)
 
-            _, kwargs = self._auto_build_predicates_and_filters([], kwargs)
-            return {x[0] for x in metadata_collector.discover(**kwargs)}
+            edited_filters = kwargs.copy()
+            _, edited_filters = self._auto_build_predicates_and_filters(
+                [], edited_filters
+            )
+            return {x[0] for x in metadata_collector.discover(**edited_filters)}
         except LayoutMismatchError:
             msg = (
                 "Layouts are enabled and should contain information about "
