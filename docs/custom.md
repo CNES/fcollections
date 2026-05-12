@@ -394,6 +394,8 @@ set this field in the subset unmixer instead, enforcing one version per
 subset
 ```
 
+(mixins)=
+
 ## Mixins
 
 A custom {class}`FilesDatabase <fcollections.core.FilesDatabase>` may need additional functionalities apart from
@@ -404,10 +406,12 @@ classes adding the functionalities are abstract, they should be mixed with other
 classes to get a complete implementation: these abstract classes are then called
 ``mixins``.
 
-Two mixins are currently available:
+Three mixins are currently available:
 
 - {class}`PeriodMixin <fcollections.core.PeriodMixin>`: works with time series
-  and can analyze the data to get the time coverage or detect holes
+  and can analyze the data to get the time coverage or detect holes.
+- {class}`HalfOrbitMixin <fcollections.core.HalfOrbitMixin>`: works with half
+  orbit granules to extract the half orbit range.
 - {class}`DownloadMixin <fcollections.core.DownloadMixin>`. Appends a download
   endpoint to a remote database.
 
