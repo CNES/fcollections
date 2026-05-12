@@ -1,4 +1,4 @@
-import pyinterp.geodetic as pyi_geod
+import pyinterp.geometry.geographic as pyi_geom
 import pytest
 
 from fcollections.geometry import expand_box
@@ -18,8 +18,8 @@ def test_expand_box(
     expected: tuple[tuple[float, float], tuple[float, float]],
 ):
     """Test box expansion with a given precision."""
-    box = pyi_geod.Box(pyi_geod.Point(*box[0]), pyi_geod.Point(*box[1]))
-    expected = pyi_geod.Box(pyi_geod.Point(*expected[0]), pyi_geod.Point(*expected[1]))
+    box = pyi_geom.Box(min_corner=box[0], max_corner=box[1])
+    expected = pyi_geom.Box(min_corner=expected[0], max_corner=expected[1])
 
     actual = expand_box(box, precision=3)
     assert (

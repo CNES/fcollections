@@ -1,9 +1,10 @@
+import numpy as np
 import pyinterp as pyi
-import pyinterp.geodetic as pyi_geod
 import pyinterp.geohash as pyi_geoh
+import pyinterp.geometry.geographic as pyi_geom
 
 
-def expand_box(box: pyi_geod.Box, precision: int) -> pyi_geod.Box:
+def expand_box(box: pyi_geom.Box, precision: int) -> pyi_geom.Box:
     """Expand a geohash box with a given precision.
 
     The method looks for the geohashes of the input box's corners with a given
@@ -12,24 +13,24 @@ def expand_box(box: pyi_geod.Box, precision: int) -> pyi_geod.Box:
 
     Parameters
     ----------
-    box: pyinterp.geodetic.Box
+    box: geographic.Box
         the box to expand
     precision: int
         the precision to expand the box to
 
     Returns
     -------
-        a pyinterp.geodetic.Box expanded to a lower precision
+        a geographic.Box expanded to a lower precision
     """
     geohashes = pyi_geoh.encode(
-        [box.min_corner.lon, box.max_corner.lon],
-        [box.min_corner.lat, box.max_corner.lat],
+        np.array([box.min_corner.lon, box.max_corner.lon]),
+        np.array([box.min_corner.lat, box.max_corner.lat]),
         precision=precision,
     )
 
     min_lon, min_lat, max_lon, max_lat = (None,) * 4
     for g in geohashes:
-        box = pyi.GeoHash.from_string(g).bounding_box()
+        box = pyi_geoh.GeoHash.from_string(g.decode()).bounding_box()
         min_lon = (
             min(box.min_corner.lon, min_lon)
             if min_lon is not None
@@ -50,6 +51,4 @@ def expand_box(box: pyi_geod.Box, precision: int) -> pyi_geod.Box:
             if max_lat is not None
             else box.max_corner.lat
         )
-    return pyi_geod.Box(
-        pyi_geod.Point(min_lon, min_lat), pyi_geod.Point(max_lon, max_lat)
-    )
+    return pyi_geom.Box(min_corner=(min_lon, min_lat), max_corner=(max_lon, max_lat))

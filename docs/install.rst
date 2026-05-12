@@ -24,7 +24,7 @@ How to install
 
         .. code:: bash
 
-            conda install files_collections shapely geopandas pyinterp dask numba -c conda-forge
+            conda install files_collections shapely geopandas 'pyinterp>=2026.4.0' dask numba -c conda-forge
 
         This will install a set of dependencies similar to
         ``python -m pip install files-collections[geo]``
@@ -66,19 +66,19 @@ These optional dependencies and their associated functionalities are listed
 below.
 
 
-+--------------+-----------------------------------------------------------------------------------------+
-| Dependency   | Description                                                                             |
-+==============+=========================================================================================+
-| `dask`_      | Activate ``map()`` method in collections, Enable parallel file reading                  |
-+--------------+-----------------------------------------------------------------------------------------+
-| `geopandas`_ | Enable geometry intersection, introduce the ``bbox`` argument in the ``query()`` method |
-+--------------+-----------------------------------------------------------------------------------------+
-| `numba`_     | Enable geometry intersection, introduce the ``bbox`` argument in the ``query()`` method |
-+--------------+-----------------------------------------------------------------------------------------+
-| `pyinterp`_  | Enable geometry intersection, introduce the ``bbox`` argument in the ``query()`` method |
-+--------------+-----------------------------------------------------------------------------------------+
-| `shapely`_   | Enable geometry intersection, introduce the ``bbox`` argument in the ``query()`` method |
-+--------------+-----------------------------------------------------------------------------------------+
++--------------+-----------------------------------------------------------------------------------------+-------------+
+| Dependency   | Description                                                                             |   Version   |
++==============+=========================================================================================+=============+
+| `dask`_      | Activate ``map()`` method in collections, Enable parallel file reading                  |             |
++--------------+-----------------------------------------------------------------------------------------+-------------+
+| `geopandas`_ | Enable geometry intersection, introduce the ``bbox`` argument in the ``query()`` method |             |
++--------------+-----------------------------------------------------------------------------------------+-------------+
+| `numba`_     | Enable geometry intersection, introduce the ``bbox`` argument in the ``query()`` method |             |
++--------------+-----------------------------------------------------------------------------------------+-------------+
+| `pyinterp`_  | Enable geometry intersection, introduce the ``bbox`` argument in the ``query()`` method | >= 2026.4.0 |
++--------------+-----------------------------------------------------------------------------------------+-------------+
+| `shapely`_   | Enable geometry intersection, introduce the ``bbox`` argument in the ``query()`` method |             |
++--------------+-----------------------------------------------------------------------------------------+-------------+
 
 .. _dask: https://www.dask.org/
 .. _geopandas: https://geopandas.org/en/stable/
