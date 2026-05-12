@@ -105,3 +105,7 @@ class SwotGeometryFilterBuilder(IFilterBuilder):
                 "retrieved"
             ),
         )
+
+    @classmethod
+    def target_fields(cls) -> tuple[str, ...]:
+        return ("cycle_number", "pass_number")

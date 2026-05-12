@@ -181,7 +181,7 @@ def l2_lr_ssh_dir(
 
     # Create fake data for the netcdf files, do not just use touch() to simulate
     # the file tree
-    root_dir = Path(tmpdir_factory.mktemp("l3_lr_ssh"))
+    root_dir = Path(tmpdir_factory.mktemp("l2_lr_ssh"))
     for file in l2_lr_ssh_files:
         relative_path = Path(file)
         if "Basic" in relative_path.name:

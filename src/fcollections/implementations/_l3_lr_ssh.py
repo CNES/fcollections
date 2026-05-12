@@ -10,6 +10,7 @@ from fcollections.core import (
     FileNameFieldPeriod,
     FileNameFieldString,
     FilesDatabase,
+    HalfOrbitMixin,
     Layout,
     PeriodMixin,
     SubsetsUnmixer,
@@ -112,9 +113,15 @@ AVISO_L3_LR_SSH_LAYOUT_V3 = Layout(
 )
 
 
-class BasicNetcdfFilesDatabaseSwotLRL3(FilesDatabase, PeriodMixin):
+class BasicNetcdfFilesDatabaseSwotLRL3(FilesDatabase, HalfOrbitMixin, PeriodMixin):
     """Database mapping to select and read Swot LR L3 Netcdf files in a local
-    file system."""
+    file system.
+
+    Note
+    ----
+    HalfOrbitMixin overrides the temporal coverage access (it is usually faster)
+    so it must be declared prior to the PeriodMixin.
+    """
 
     layouts = [
         Layout([FileNameConventionSwotL3()]),

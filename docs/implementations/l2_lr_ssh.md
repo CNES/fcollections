@@ -126,6 +126,35 @@ The following examples can be used to build complex queries
 :::
 ::::
 
+## Generic information
+
+Generic information about the files set can be extracted. This available
+information is specific to the [mixins](#mixins) used to build
+{class}`fcollections.implementations.NetcdfFilesDatabaseSwotLRL2`
+
+::::{tab-set}
+:::{tab-item} PeriodMixin
+  - Time coverage
+    ```python
+    fc.time_coverage(subset='Expert', version='P?D?', phase='SCIENCE')
+    ```
+  - Time holes
+    ```python
+    fc.time_holes(subset='Expert', version='P?D?', phase='SCIENCE')
+    ```
+:::
+:::{tab-item} HalfOrbitMixin
+  - Half orbit range
+    ```python
+    fc.half_orbit_range(subset='Expert', version='P?D?', phase='SCIENCE')
+    ```
+  - Cycle range
+    ```python
+    fc.cycle_range(subset='Expert', version='P?D?', phase='SCIENCE')
+    ```
+:::
+::::
+
 
 ## Stack for temporal analysis
 

@@ -11,6 +11,11 @@ if tp.TYPE_CHECKING:
     import numpy.typing as np_t
 
 
+def test_inconsistent_period():
+    with pytest.raises(ValueError):
+        Period(np.datetime64("2023-01-02"), np.datetime64("2023-01-01"))
+
+
 @pytest.fixture
 def reference() -> Period:
     return Period(np.datetime64("2023-01-01"), np.datetime64("2023-02-01"))

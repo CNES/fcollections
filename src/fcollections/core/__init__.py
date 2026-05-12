@@ -59,6 +59,7 @@ from ._metadata import (
 from ._mixins import (
     DiscreteTimesMixin,
     DownloadMixin,
+    HalfOrbitMixin,
     ITemporalMixin,
     PeriodMixin,
 )
@@ -91,6 +92,7 @@ __all__ = [
     "DownloadMixin",
     "CaseType",
     "PeriodMixin",
+    "HalfOrbitMixin",
     "GroupMetadata",
     "group_metadata_from_netcdf",
     "VariableMetadata",

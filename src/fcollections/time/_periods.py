@@ -7,7 +7,13 @@ import numpy as np
 
 @dc.dataclass(frozen=True)
 class Period:
-    """Period representation."""
+    """Period representation.
+
+    Raises
+    ------
+    ValueError
+        If the period start > stop.
+    """
 
     start: np.datetime64
     """Date representing the start of the period."""
@@ -17,6 +23,11 @@ class Period:
     """Inclusive (True) or strict (False) start selection."""
     include_stop: bool = True
     """Inclusive (True) or strict (False) end selection."""
+
+    def __post_init__(self):
+        if self.start > self.stop:
+            msg = "Cannot create a period with start > stop."
+            raise ValueError(msg)
 
     @property
     def center(self) -> np.datetime64:

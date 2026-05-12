@@ -498,17 +498,47 @@ class FilesDatabase(metaclass=FilesDatabaseMeta):
             with warnings.catch_warnings():
                 warnings.simplefilter("error", category=PerformanceWarning)
                 try:
-                    subset_filters = self.unmixer.pick_subset(self.subsets, **kwargs)
-                    kwargs |= subset_filters
-                    unmix = False
-                except IndexError:
-                    logger.debug("No subset, nothing to unmix")
+                    self._pick_subset_before_files_scan(kwargs)
                     unmix = False
                 except PerformanceWarning:
                     logger.debug(
                         "Subset unmixing could not be done before the files scan: it will be done after."
                     )
 
+        predicates, kwargs = self._auto_build_predicates_and_filters(predicates, kwargs)
+
+        df = self.discoverer.to_dataframe(
+            predicates=predicates,
+            stat_fields=stat_fields,
+            enable_layouts=self.enable_layouts,
+            **{k: kwargs[k] for k in kwargs if k in self.listing_parameters},
+        )
+
+        postprocesses = map(
+            lambda item: item[1],
+            filter(
+                lambda item: item[0],
+                [
+                    (unmix and self.unmixer is not None, self.unmixer),
+                    (deduplicate and self.deduplicator is not None, self.deduplicator),
+                    (
+                        sort and self.sort_keys is not None,
+                        lambda df: df.sort_values(self.sort_keys, ignore_index=True),
+                    ),
+                ],
+            ),
+        )
+
+        for postprocess in postprocesses:
+            df = postprocess(df)
+
+        return df
+
+    def _auto_build_predicates_and_filters(
+        self,
+        predicates: tp.Iterable[tp.Callable[[tuple[tp.Any, ...]], bool]],
+        kwargs,
+    ):
         # Auto-build declared predicates and additionnal filters.
         predicates = list(predicates)
         if self.filter_builders is not None:
@@ -559,32 +589,7 @@ class FilesDatabase(metaclass=FilesDatabaseMeta):
                         filters.keys(),
                     )
 
-        df = self.discoverer.to_dataframe(
-            predicates=predicates,
-            stat_fields=stat_fields,
-            enable_layouts=self.enable_layouts,
-            **{k: kwargs[k] for k in kwargs if k in self.listing_parameters},
-        )
-
-        postprocesses = map(
-            lambda item: item[1],
-            filter(
-                lambda item: item[0],
-                [
-                    (unmix and self.unmixer is not None, self.unmixer),
-                    (deduplicate and self.deduplicator is not None, self.deduplicator),
-                    (
-                        sort and self.sort_keys is not None,
-                        lambda df: df.sort_values(self.sort_keys, ignore_index=True),
-                    ),
-                ],
-            ),
-        )
-
-        for postprocess in postprocesses:
-            df = postprocess(df)
-
-        return df
+        return predicates, kwargs
 
     def _query(self, **kwargs) -> xr_t.Dataset | None:
         """Query a dataset by reading selected files in file system.
@@ -834,13 +839,14 @@ class FilesDatabase(metaclass=FilesDatabaseMeta):
             # there is an ambiguity. We need the subsets list whether the listing
             # is quick or slow. In case of a slow computation of subsets, a
             # warning will be emitted
-            if unmix:
-                try:
-                    kwargs |= self.unmixer.pick_subset(self.subsets, **kwargs)
-                except IndexError:
-                    logger.debug("No subset, nothing to unmix")
+            if unmix and self.unmixer is not None:
+                self._pick_subset_before_files_scan(kwargs)
 
-            return {x[0] for x in metadata_collector.discover(**kwargs)}
+            edited_filters = kwargs.copy()
+            _, edited_filters = self._auto_build_predicates_and_filters(
+                [], edited_filters
+            )
+            return {x[0] for x in metadata_collector.discover(**edited_filters)}
         except LayoutMismatchError:
             msg = (
                 "Layouts are enabled and should contain information about "
@@ -851,6 +857,43 @@ class FilesDatabase(metaclass=FilesDatabaseMeta):
             )
             warnings.warn(msg, PerformanceWarning)
             return set(self.list_files(**kwargs, unmix=unmix)[filter_name])
+
+    def _pick_subset_before_files_scan(self, filters: dict[str, tp.Any]):
+        """Pick a subset without listing the files metadata.
+
+        Listing the files metadata can be costly. If possible, we wish to
+        determine the subset by parsing the information in the folders.
+
+        Parameters
+        ----------
+        filters
+            Filters that needs to be applied on the files. These should also
+            contain the mandatory filters for subset selection. This parameter
+            is modified in place to add the automatically set filters for the
+            subset (refer to :attr:`SubsetUnmixer.auto_pick_last`)
+
+        Warns
+        -----
+        PerformanceWarning
+            In case the subset information cannot be found in the folders.
+        """
+        try:
+            # Sanitize field before
+            file_name_convention = self.layouts[0].conventions[-1]
+
+            sanitized_subset_parameters = {
+                field_name: file_name_convention.get_field(field_name).sanitize(
+                    reference_value
+                )
+                for field_name, reference_value in filters.items()
+                if field_name in self.unmixer.partition_keys
+            }
+
+            filters |= self.unmixer.pick_subset(
+                self.subsets, **sanitized_subset_parameters
+            )
+        except IndexError:
+            logger.debug("No subset, nothing to unmix")
 
     def _validate_field(self, filter_name: str):
         """Check a field is declared in one of the layouts.
@@ -1134,3 +1177,19 @@ class IFilterBuilder(abc.ABC):
     @abc.abstractmethod
     def parameter(cls) -> FileNameField:
         """Initialization parameter for the class."""
+
+    @classmethod
+    @abc.abstractmethod
+    def target_fields(cls) -> tuple[str, ...]:
+        """Target fields of the predicate.
+
+        The target fields determines which part of a metadata record (related
+        information about one file) is used. This can be useful to detect
+        incompatibilities between the predicate filtering, and more classic
+        filtering.
+
+        Returns
+        -------
+        tuple[str, ...]
+            Field names used by the predicate to filter a record.
+        """

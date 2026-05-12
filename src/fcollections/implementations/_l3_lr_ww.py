@@ -9,6 +9,7 @@ from fcollections.core import (
     FileNameFieldPeriod,
     FileNameFieldString,
     FilesDatabase,
+    HalfOrbitMixin,
     Layout,
     PeriodMixin,
     SubsetsUnmixer,
@@ -62,8 +63,13 @@ AVISO_L3_LR_WINDWAVE_LAYOUT = Layout(
 )
 
 
-class BasicNetcdfFilesDatabaseSwotLRWW(FilesDatabase, PeriodMixin):
+class BasicNetcdfFilesDatabaseSwotLRWW(FilesDatabase, HalfOrbitMixin, PeriodMixin):
     """Database mapping to explore and read the L3_LR_WIND_WAVE product.
+
+    Note
+    ----
+    HalfOrbitMixin overrides the temporal coverage access (it is usually faster)
+    so it must be declared prior to the PeriodMixin.
 
     See Also
     --------

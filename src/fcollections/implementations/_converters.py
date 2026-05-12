@@ -49,3 +49,7 @@ class SwotPhaseFilterBuilder(IFilterBuilder):
             case_type_decoded=CaseType.upper,
             case_type_encoded=CaseType.lower,
         )
+
+    @classmethod
+    def target_fields(cls) -> tuple[str, ...]:
+        return ("cycle_number",)
