@@ -1,7 +1,56 @@
 Release notes
 =============
 
-1.0.0 (2025-02-04)
+2.0.0 (2026-05-XX)
+------------------
+
+Important
+.........
+
+The project has been moved to the `CNES <https://github.com/CNES/fcollections>`_
+Github repository.
+
+A new method ``filter_values`` is available for all ``NetcdfFilesDatabase``
+implementations. This method helps extracting the possible values of a query's
+filter. It is fast when scanning the folders (layouts must be enabled), but
+slower when scanning the files is necessary (a ``PerformanceWarning`` is issued
+in that case).
+
+The following dependencies have new constraints:
+  - Pandas: ``>=3``
+  - Pyinterp: ``>=2026.4.0``
+
+Breaking Changes
+................
+
+The ``IPredicate`` interface has been refactored into the more explicit
+``IFilterBuilder`` interface. This interface handles both complex predicates and
+filters' converter through the ``build_filter`` and ``build_predicate`` methods.
+
+Previously, if a file did not match the file name convention, it was ignored. It
+now raises a ``LayoutMismatchError``.
+
+``PeriodMixin`` now expects to work on a single homogeneous subset of data. In
+case the filters given to the methods are not sufficient to extract an
+homogeneous dataset, an error will be raised.
+
+Details
+.......
+
+- chore: migration to pyinterp 2026.4.0 `PR#8 <https://github.com/CNES/fcollections/pull/8>`_
+- Half orbit mixin `PR#7 <https://github.com/CNES/fcollections/pull/7>`_
+- perf: subset unmixing prior to listing `PR#6 <https://github.com/CNES/fcollections/pull/6>`_
+- feat!: Add phase filter argument `PR#5 <https://github.com/CNES/fcollections/pull/5>`_
+- feat!: filter values from Layout folders `PR#4 <https://github.com/CNES/fcollections/pull/4>`_
+- refactor: adapt code to work with pandas `PR#1 <https://github.com/CNES/fcollections/pull/1>`_
+
+Contributors
+............
+
+- Robin Chevrier
+- Anne-Sophie Tonneau
+
+1.0.0 (2026-02-04)
 ------------------
 
 A bit of refactoring has been done in this version to improve the maintainability
