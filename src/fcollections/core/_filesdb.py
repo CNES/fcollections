@@ -106,9 +106,7 @@ def _extract_parameters(
 ) -> dict[str, tuple[dict[str, dcs.DocstringParam], dict[str, inspect.Parameter]]]:
     parameters = {}
     parameters["reader"] = _reading_parameters(new_class.reader)
-    parameters["convention"] = _convention_parameters(
-        new_class.layouts[0].conventions[-1]
-    )
+    parameters["convention"] = _convention_parameters(new_class.layouts)
     parameters["filter_builders"] = _filter_builders_parameters(
         new_class.filter_builders
     )
@@ -208,9 +206,17 @@ def _reading_parameters(
 
 
 def _convention_parameters(
-    parser: FileNameConvention,
+    layouts: list[Layout],
 ) -> tuple[dict[str, dcs.DocstringParam], dict[str, inspect.Parameter]]:
-    fields = parser.fields
+    fields_names = []
+    fields = []
+    for layout in layouts:
+        for convention in layout.conventions:
+            for field in convention.fields:
+                if field.name not in fields_names:
+                    fields.append(field)
+                    fields_names.append(field.name)
+
     convention_docstring_parameters = {
         field.name: dcs.DocstringParam(
             ["param", field.name],
@@ -506,6 +512,7 @@ class FilesDatabase(metaclass=FilesDatabaseMeta):
                     )
 
         predicates, kwargs = self._auto_build_predicates_and_filters(predicates, kwargs)
+        self._remove_unknown_layout_filters(kwargs)
 
         df = self.discoverer.to_dataframe(
             predicates=predicates,
@@ -533,6 +540,25 @@ class FilesDatabase(metaclass=FilesDatabaseMeta):
             df = postprocess(df)
 
         return df
+
+    def _remove_unknown_layout_filters(self, filters):
+        if not self.enable_layouts:
+            layout_filters = functools.reduce(
+                lambda a, b: a | b, [set(layout.names) for layout in self.layouts]
+            )
+            shared_filters = {f.name for f in self.layouts[0].conventions[-1].fields}
+            layout_specific_filters = layout_filters - shared_filters
+            layout_specific_filters &= set(filters)
+
+            msg = (
+                "You have configured layout-specific filters ("
+                f"{layout_specific_filters} with `enable_layouts=False`: "
+                "they will be ignored"
+            )
+            warnings.warn(msg)
+
+            for layout_specific_filter in layout_specific_filters:
+                filters.pop(layout_specific_filter)
 
     def _auto_build_predicates_and_filters(
         self,
@@ -588,6 +614,9 @@ class FilesDatabase(metaclass=FilesDatabaseMeta):
                         filter_field.name,
                         filters.keys(),
                     )
+
+                logger.debug("Removing filter %s", filter_field.name)
+                kwargs.pop(filter_field.name)
 
         return predicates, kwargs
 
@@ -846,6 +875,7 @@ class FilesDatabase(metaclass=FilesDatabaseMeta):
             _, edited_filters = self._auto_build_predicates_and_filters(
                 [], edited_filters
             )
+            self._remove_unknown_layout_filters(edited_filters)
             return {x[0] for x in metadata_collector.discover(**edited_filters)}
         except LayoutMismatchError:
             msg = (

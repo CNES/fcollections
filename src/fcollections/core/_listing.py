@@ -896,7 +896,7 @@ class FileSystemMetadataCollector:
         stat_fields: tuple[str] = (),
         enable_layouts: bool = True,
         **filters,
-    ) -> pda.DataFrame:
+    ) -> tp.Generator[tuple[tp.Any, ...], None, None]:
         """
         Parameters
         ----------
@@ -931,7 +931,15 @@ class FileSystemMetadataCollector:
             In case ``enable_layouts`` is True and a mismatch between the
             layouts and the actual files is detected
         """
-        for layout in self.layouts:
+        layouts = [
+            layout for layout in self.layouts if len(set(filters) - layout.names) == 0
+        ]
+        logger.debug(
+            "Removed %d layouts to match all the input filters",
+            len(self.layouts) - len(layouts),
+        )
+
+        for layout in layouts:
             # TODO: We should also be able to give the predicates here -> need
             # to modify the Layout interface
             layout.set_filters(**filters)
@@ -939,7 +947,7 @@ class FileSystemMetadataCollector:
         self.root_node.clear()
         if enable_layouts:
             logger.debug("Using layouts to speed up listing")
-            visitor = LayoutVisitor(self.layouts, stat_fields)
+            visitor = LayoutVisitor(layouts, stat_fields)
             records = walk(self.root_node, visitor)
         else:
             logger.debug("Full scan (not using layouts)")
@@ -997,9 +1005,26 @@ class FileSystemMetadataCollector:
             layouts and the actual files is detected
         """
         file_convention = self.layouts[0].conventions[-1]
-        return pda.DataFrame(
-            self.discover(predicates, stat_fields, enable_layouts, **filters),
-            columns=[f.name for f in file_convention.fields]
-            + ["filename"]
-            + list(stat_fields),
-        )
+        try:
+            return pda.DataFrame(
+                self.discover(predicates, stat_fields, enable_layouts, **filters),
+                columns=[f.name for f in file_convention.fields]
+                + ["filename"]
+                + list(stat_fields),
+            )
+        except LayoutMismatchError as exc:
+            layout_filters = functools.reduce(
+                lambda a, b: a | b, [set(layout.names) for layout in self.layouts]
+            )
+            shared_filters = {f.name for f in self.layouts[0].conventions[-1].fields}
+            layout_specific_filters = layout_filters - shared_filters
+
+            layout_specific_filters &= set(filters)
+            if len(layout_specific_filters) > 0:
+                note = (
+                    "You may have introduced incompatibilities in your "
+                    "query by setting layout-specific filters: "
+                    f"{str(layout_specific_filters)}."
+                )
+                exc.add_note(note)
+            raise exc

@@ -91,6 +91,13 @@ AVISO_L4_SWOT_LAYOUT = Layout(
     ]
 )
 
+AVISO_L4_SWOT_LAYOUT_V3 = Layout(
+    [
+        *AVISO_L4_SWOT_LAYOUT.conventions[:2],
+        FileNameConventionGriddedSLA(),
+    ]
+)
+
 _DATASET_ID_CONVENTION = build_convention(
     complementary="(?P<blending>allsat|demo-allsat-swos|allsat-demo)-l4-duacs-(?P<spatial_resolution>.*)deg",
     complementary_fields=[
@@ -113,6 +120,7 @@ class BasicNetcdfFilesDatabaseGriddedSLA(FilesDatabase, PeriodMixin):
     layouts = [
         Layout([FileNameConventionGriddedSLA()]),
         AVISO_L4_SWOT_LAYOUT,
+        AVISO_L4_SWOT_LAYOUT_V3,
         CMEMS_L4_SSHA_LAYOUT,
     ]
     reader = OpenMfDataset(XARRAY_TEMPORAL_NETCDFS)
