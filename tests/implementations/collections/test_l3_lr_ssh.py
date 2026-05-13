@@ -11,7 +11,12 @@ import pytest
 import xarray as xr
 from utils import brute_force_geographical_selection, extract_box_from_polygon
 
-from fcollections.core import FileNameConvention, Layout, PerformanceWarning
+from fcollections.core import (
+    FileNameConvention,
+    Layout,
+    LayoutMismatchError,
+    PerformanceWarning,
+)
 from fcollections.implementations import (
     AVISO_L3_LR_SSH_LAYOUT_V2,
     AVISO_L3_LR_SSH_LAYOUT_V3,
@@ -759,6 +764,38 @@ class TestLayout:
         assert set(map(tuple, actual.to_numpy())) == set(
             map(tuple, expected.to_numpy())
         )
+
+    def test_list_layout_reproc(
+        self,
+        l3_lr_ssh_dir_empty_files_layout: Path,
+    ):
+        db = NetcdfFilesDatabaseSwotLRL3(l3_lr_ssh_dir_empty_files_layout)
+        files = db.list_files(temporality="FORWARD", version="2.0.1")
+        actual_half_orbits = sorted(
+            [tuple(x) for x in files[["cycle_number", "pass_number"]].to_numpy()]
+        )
+        assert actual_half_orbits == [(10, 532)]
+
+    def test_list_layout_reproc_incompatibility(
+        self,
+        l3_lr_ssh_dir_empty_files_layout: Path,
+    ):
+        db = NetcdfFilesDatabaseSwotLRL3(l3_lr_ssh_dir_empty_files_layout)
+        with pytest.raises(LayoutMismatchError, match="layout-specific"):
+            db.list_files(temporality="FORWARD")
+
+    def test_list_layout_reproc_warning(
+        self,
+        l3_lr_ssh_dir_empty_files_layout: Path,
+    ):
+        db = NetcdfFilesDatabaseSwotLRL3(
+            l3_lr_ssh_dir_empty_files_layout, enable_layouts=False
+        )
+
+        expected = db.list_files(sort=True)
+        with pytest.warns(UserWarning, match="layout-specific"):
+            actual = db.list_files(sort=True, temporality="FORWARD")
+        assert expected.equals(actual)
 
 
 def test_subsets(l3_lr_ssh_dir: Path):

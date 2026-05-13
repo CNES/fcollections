@@ -715,6 +715,14 @@ class FilesDatabase(metaclass=FilesDatabaseMeta):
             )
 
         df = self._files(
+            # Building a new dictionary is necessary. The input parameters will
+            # be modified in place by the _files method. Reading parameters that
+            # are also listing parameters may be removed: the copy will prevent
+            # the disappearance of thoses specific parameters. An example would
+            # be the L3_LR_SSH `bbox` parameter that is converted to a
+            # pass_number filters and removed from the listing parameters, but
+            # this parameter is also used by the reader to finely crop the
+            # datasets.
             **{k: kwargs[k] for k in kwargs if k in self.listing_parameters},
             unmix=True,
             deduplicate=True,
