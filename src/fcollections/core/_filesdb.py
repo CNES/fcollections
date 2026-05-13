@@ -541,7 +541,28 @@ class FilesDatabase(metaclass=FilesDatabaseMeta):
 
         return df
 
-    def _remove_unknown_layout_filters(self, filters):
+    def _remove_unknown_layout_filters(self, filters: dict[str, tp.Any]):
+        """Remove incompatible filters for the current configuration.
+
+        If the layouts are disabled (enabled_layouts=False), only the file name
+        convention will be used to generate metadata and apply filters. Fields
+        that are in the folders will not be used: the filters matching these
+        unused field will be removed if given by the user, with a warning
+        explaining that they should not be given.
+
+        Parameters
+        ----------
+        filters
+            Mapping of filters given by the user. If the class attribute
+            ``enable_layouts`` is set to False, the layout-specific filters will
+            be removed in-place
+
+        Warns
+        -----
+        UserWarning
+            If ``enable_layouts=False`` and the input parameter ``filters`` has
+            layout-specific entries.
+        """
         if not self.enable_layouts:
             layout_filters = functools.reduce(
                 lambda a, b: a | b, [set(layout.names) for layout in self.layouts]
@@ -550,12 +571,13 @@ class FilesDatabase(metaclass=FilesDatabaseMeta):
             layout_specific_filters = layout_filters - shared_filters
             layout_specific_filters &= set(filters)
 
-            msg = (
-                "You have configured layout-specific filters ("
-                f"{layout_specific_filters} with `enable_layouts=False`: "
-                "they will be ignored"
-            )
-            warnings.warn(msg)
+            if len(layout_specific_filters) > 0:
+                msg = (
+                    "You have configured layout-specific filters ("
+                    f"{layout_specific_filters} with `enable_layouts=False`: "
+                    "they will be ignored"
+                )
+                warnings.warn(msg)
 
             for layout_specific_filter in layout_specific_filters:
                 filters.pop(layout_specific_filter)
@@ -563,8 +585,52 @@ class FilesDatabase(metaclass=FilesDatabaseMeta):
     def _auto_build_predicates_and_filters(
         self,
         predicates: tp.Iterable[tp.Callable[[tuple[tp.Any, ...]], bool]],
-        kwargs,
-    ):
+        kwargs: dict[str, tp.Any],
+    ) -> tuple[tp.Callable[[tuple[tp.Any, ...]], bool], dict[str, tp.Any]]:
+        """Build filters using the ``filter_builders`` class attribute.
+
+        Filter builders can either generate either a simple or complex filter. A
+        simple filter associates a key with a value, whereas a complex filter is
+        a predicate applied on the metadata record.
+
+        Complex filters - aka predicates - will be added to the input list of
+        ``predicates``. Simple filters will be added to the input simple filters
+        ``kwargs`` (it will be modified in place).
+
+        Note
+        ----
+
+        Filter builders will intercept a specific value from the ``kwargs``
+        filters in order to build the additional. This value will be removed
+        from the result.
+
+        Note
+        ----
+
+        Filter builders will generate filters that work on one or multiple
+        values of a record. This method cannot fuse multiple simple filters that
+        work on the same fields, so if the user has given a filter working on
+        the same field as an automatically generated simple filter, an error
+        will be raised.
+
+        Parameters
+        ----------
+        predicates
+            Iterable of predicates. It will be converted to a list and enriched
+            with the configured predicates for the class.
+        kwargs
+            Simple filters. Will be modified in-place.
+
+        Raises
+        ------
+        ValueError
+            In case the user has given two incompatible filters.
+
+        Returns
+        -------
+        tuple[tp.Callable[[tuple[tp.Any, ...]], bool], dict[str, tp.Any]]
+            The enriched predicates and simple filters
+        """
         # Auto-build declared predicates and additionnal filters.
         predicates = list(predicates)
         if self.filter_builders is not None:

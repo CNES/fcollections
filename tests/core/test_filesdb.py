@@ -424,6 +424,26 @@ def test_list_files_filter_builders_error(
         db_predicate_converter.list_files(a_number=[2, 4], c_number=2)
 
 
+def test_list_files_layout_specific_arg(db_with_files_bad_layout: FilesDatabaseTest):
+    db = FilesDatabaseTest(
+        db_with_files_bad_layout.path, db_with_files_bad_layout.fs, enable_layouts=False
+    )
+
+    expected = pda.DataFrame(
+        [
+            (
+                np.datetime64("2025-01-01", "us"),
+                2,
+                "/bad_layout/baz/a_002/bar/a_file_002_20250101.nc",
+            )
+        ],
+        columns=["time", "a_number", "filename"],
+    )
+
+    with pytest.warns(UserWarning, match="layout-specific"):
+        assert expected.equals(db.list_files(a_number=2, b_string=1))
+
+
 def test_query_empty(db_with_files: FilesDatabaseTest):
     assert db_with_files.query(a_number=10) is None
 
@@ -684,6 +704,20 @@ def test_filters_value_layouts_disabled_full_scan(
         values = db.filter_values(
             "a_number",
         )
+    assert values == {1, 2}
+
+
+def test_filters_value_layouts_disabled_layout_specific_arg(
+    db_with_files_bad_layout: FilesDatabaseTest,
+):
+    db = FilesDatabaseTest(
+        db_with_files_bad_layout.path, db_with_files_bad_layout.fs, enable_layouts=False
+    )
+    with (
+        pytest.warns(PerformanceWarning, match="enabled"),
+        pytest.warns(UserWarning, match="layout-specific"),
+    ):
+        values = db.filter_values("a_number", b_string=2)
     assert values == {1, 2}
 
 
