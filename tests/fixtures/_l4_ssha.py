@@ -58,6 +58,8 @@ def l4_ssha_files() -> list[str]:
     return [
         "aviso/v1.0/miost/science/dt_global_allsat_phy_l4_20230728_20240912.nc",
         "aviso/v1.0/miost/science/dt_global_allsat_phy_l4_20230729_20240912.nc",
+        "aviso/v3.0/miost/dt_global_allsat_phy_l4_20230728_20240912.nc",
+        "aviso/v3.0/miost/dt_global_allsat_phy_l4_20230729_20240912.nc",
         "aviso/v0.3/4dvarnet/calval/dt_global_allsat_phy_l4_20230729_20240913.nc",
         "aviso/v0.3/4dvarqg/calval/dt_global_allsat_phy_l4_20230729_20240912.nc",
         "aviso/v0.3/4dvarqg/calval/nrt_global_allsat_phy_l4_20230729_20240912.nc",

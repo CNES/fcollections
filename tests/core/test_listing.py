@@ -882,3 +882,15 @@ def test_collector_stat_fields_error(
     with pytest.raises(KeyError):
         collector, enable_layouts = collector_status
         collector.to_dataframe(enable_layouts=enable_layouts, stat_fields=("foo",))
+
+
+def test_collector_layout_mismatch(
+    collector_status: tuple[FileSystemMetadataCollector, bool],
+):
+    """LayoutMismatchError message is annotated if layout-specific filters are
+    given."""
+    collector, enable_layouts = collector_status
+    if not enable_layouts:
+        # Bad layout (dead branch)
+        with pytest.raises(LayoutMismatchError, match="layout-specific"):
+            collector.to_dataframe(enable_layouts=True, resolution="HR")

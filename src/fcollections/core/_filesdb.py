@@ -106,9 +106,7 @@ def _extract_parameters(
 ) -> dict[str, tuple[dict[str, dcs.DocstringParam], dict[str, inspect.Parameter]]]:
     parameters = {}
     parameters["reader"] = _reading_parameters(new_class.reader)
-    parameters["convention"] = _convention_parameters(
-        new_class.layouts[0].conventions[-1]
-    )
+    parameters["convention"] = _convention_parameters(new_class.layouts)
     parameters["filter_builders"] = _filter_builders_parameters(
         new_class.filter_builders
     )
@@ -208,9 +206,17 @@ def _reading_parameters(
 
 
 def _convention_parameters(
-    parser: FileNameConvention,
+    layouts: list[Layout],
 ) -> tuple[dict[str, dcs.DocstringParam], dict[str, inspect.Parameter]]:
-    fields = parser.fields
+    fields_names = []
+    fields = []
+    for layout in layouts:
+        for convention in layout.conventions:
+            for field in convention.fields:
+                if field.name not in fields_names:
+                    fields.append(field)
+                    fields_names.append(field.name)
+
     convention_docstring_parameters = {
         field.name: dcs.DocstringParam(
             ["param", field.name],
@@ -506,6 +512,7 @@ class FilesDatabase(metaclass=FilesDatabaseMeta):
                     )
 
         predicates, kwargs = self._auto_build_predicates_and_filters(predicates, kwargs)
+        self._remove_unknown_layout_filters(kwargs)
 
         df = self.discoverer.to_dataframe(
             predicates=predicates,
@@ -534,11 +541,96 @@ class FilesDatabase(metaclass=FilesDatabaseMeta):
 
         return df
 
+    def _remove_unknown_layout_filters(self, filters: dict[str, tp.Any]):
+        """Remove incompatible filters for the current configuration.
+
+        If the layouts are disabled (enabled_layouts=False), only the file name
+        convention will be used to generate metadata and apply filters. Fields
+        that are in the folders will not be used: the filters matching these
+        unused field will be removed if given by the user, with a warning
+        explaining that they should not be given.
+
+        Parameters
+        ----------
+        filters
+            Mapping of filters given by the user. If the class attribute
+            ``enable_layouts`` is set to False, the layout-specific filters will
+            be removed in-place
+
+        Warns
+        -----
+        UserWarning
+            If ``enable_layouts=False`` and the input parameter ``filters`` has
+            layout-specific entries.
+        """
+        if not self.enable_layouts:
+            layout_filters = functools.reduce(
+                lambda a, b: a | b, [set(layout.names) for layout in self.layouts]
+            )
+            shared_filters = {f.name for f in self.layouts[0].conventions[-1].fields}
+            layout_specific_filters = layout_filters - shared_filters
+            layout_specific_filters &= set(filters)
+
+            if len(layout_specific_filters) > 0:
+                msg = (
+                    "You have configured layout-specific filters ("
+                    f"{layout_specific_filters} with `enable_layouts=False`: "
+                    "they will be ignored"
+                )
+                warnings.warn(msg)
+
+            for layout_specific_filter in layout_specific_filters:
+                filters.pop(layout_specific_filter)
+
     def _auto_build_predicates_and_filters(
         self,
         predicates: tp.Iterable[tp.Callable[[tuple[tp.Any, ...]], bool]],
-        kwargs,
-    ):
+        kwargs: dict[str, tp.Any],
+    ) -> tuple[tp.Callable[[tuple[tp.Any, ...]], bool], dict[str, tp.Any]]:
+        """Build filters using the ``filter_builders`` class attribute.
+
+        Filter builders can either generate either a simple or complex filter. A
+        simple filter associates a key with a value, whereas a complex filter is
+        a predicate applied on the metadata record.
+
+        Complex filters - aka predicates - will be added to the input list of
+        ``predicates``. Simple filters will be added to the input simple filters
+        ``kwargs`` (it will be modified in place).
+
+        Note
+        ----
+
+        Filter builders will intercept a specific value from the ``kwargs``
+        filters in order to build the additional. This value will be removed
+        from the result.
+
+        Note
+        ----
+
+        Filter builders will generate filters that work on one or multiple
+        values of a record. This method cannot fuse multiple simple filters that
+        work on the same fields, so if the user has given a filter working on
+        the same field as an automatically generated simple filter, an error
+        will be raised.
+
+        Parameters
+        ----------
+        predicates
+            Iterable of predicates. It will be converted to a list and enriched
+            with the configured predicates for the class.
+        kwargs
+            Simple filters. Will be modified in-place.
+
+        Raises
+        ------
+        ValueError
+            In case the user has given two incompatible filters.
+
+        Returns
+        -------
+        tuple[tp.Callable[[tuple[tp.Any, ...]], bool], dict[str, tp.Any]]
+            The enriched predicates and simple filters
+        """
         # Auto-build declared predicates and additionnal filters.
         predicates = list(predicates)
         if self.filter_builders is not None:
@@ -589,6 +681,9 @@ class FilesDatabase(metaclass=FilesDatabaseMeta):
                         filters.keys(),
                     )
 
+                logger.debug("Removing filter %s", filter_field.name)
+                kwargs.pop(filter_field.name)
+
         return predicates, kwargs
 
     def _query(self, **kwargs) -> xr_t.Dataset | None:
@@ -620,6 +715,14 @@ class FilesDatabase(metaclass=FilesDatabaseMeta):
             )
 
         df = self._files(
+            # Building a new dictionary is necessary. The input parameters will
+            # be modified in place by the _files method. Reading parameters that
+            # are also listing parameters may be removed: the copy will prevent
+            # the disappearance of thoses specific parameters. An example would
+            # be the L3_LR_SSH `bbox` parameter that is converted to a
+            # pass_number filters and removed from the listing parameters, but
+            # this parameter is also used by the reader to finely crop the
+            # datasets.
             **{k: kwargs[k] for k in kwargs if k in self.listing_parameters},
             unmix=True,
             deduplicate=True,
@@ -846,6 +949,7 @@ class FilesDatabase(metaclass=FilesDatabaseMeta):
             _, edited_filters = self._auto_build_predicates_and_filters(
                 [], edited_filters
             )
+            self._remove_unknown_layout_filters(edited_filters)
             return {x[0] for x in metadata_collector.discover(**edited_filters)}
         except LayoutMismatchError:
             msg = (

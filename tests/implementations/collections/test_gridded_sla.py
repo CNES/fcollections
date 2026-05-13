@@ -7,7 +7,7 @@ import numpy as np
 import pytest
 from fsspec.implementations.local import LocalFileSystem
 
-from fcollections.core import DirNode, FileSystemMetadataCollector
+from fcollections.core import DirNode, FileSystemMetadataCollector, LayoutMismatchError
 from fcollections.implementations import (
     AVISO_L4_SWOT_LAYOUT,
     CMEMS_L4_SSHA_LAYOUT,
@@ -220,13 +220,13 @@ class TestLayout:
     @pytest.mark.parametrize(
         "filters, expected",
         [
-            ({}, [0, 1, 2, 3, 4]),
-            ({"version": "0.3"}, [2, 3, 4]),
-            ({"method": "4dvarnet"}, [2]),
-            ({"phase": "SCIENCE"}, [0, 1]),
-            ({"time": np.datetime64("2023-07-29")}, [1, 2, 3, 4]),
-            ({"production_date": np.datetime64("2024-09-13")}, [2]),
-            ({"delay": Delay.NRT}, [4]),
+            ({}, [0, 1, 2, 3, 4, 5, 6]),
+            ({"version": "0.3"}, [4, 5, 6]),
+            ({"method": "4dvarnet"}, [4]),
+            ({"phase": "SCIENCE", "version": "1.0"}, [0, 1]),
+            ({"time": np.datetime64("2023-07-29")}, [1, 3, 4, 6]),
+            ({"production_date": np.datetime64("2024-09-13")}, [4]),
+            ({"delay": Delay.NRT}, [6]),
         ],
     )
     def test_list_layout_aviso(
@@ -253,17 +253,48 @@ class TestLayout:
         assert len(expected) > 0
         assert expected == actual
 
+    def test_list_layout_aviso_incompatibility(
+        self,
+        l4_ssha_dir_layout_aviso: Path,
+    ):
+        root_path_str = l4_ssha_dir_layout_aviso.as_posix()
+        root_node = DirNode(
+            root_path_str, {"name": root_path_str}, LocalFileSystem(), 0
+        )
+
+        collector = FileSystemMetadataCollector(
+            NetcdfFilesDatabaseGriddedSLA.layouts, root_node
+        )
+
+        with pytest.raises(LayoutMismatchError, match="layout-specific"):
+            collector.to_dataframe(phase="SCIENCE")
+
+    def test_list_layout_aviso_warning(
+        self,
+        l4_ssha_dir_layout_aviso: Path,
+    ):
+        db = NetcdfFilesDatabaseGriddedSLA(
+            l4_ssha_dir_layout_aviso, enable_layouts=False
+        )
+
+        reference = db.list_files(sort=True)
+        with pytest.warns(UserWarning, match="layout-specific"):
+            actual = db.list_files(phase="SCIENCE", sort=True)
+
+        assert len(reference) > 0
+        assert reference.equals(actual)
+
     @pytest.mark.parametrize(
         "filters, expected",
         [
-            ({}, [8, 9, 10, 11]),
+            ({}, [10, 11, 12, 13]),
             ({"delay": Delay.DT}, [0]),
             ({"type": DataType.MY}, [0]),
-            ({"version": "202411"}, [11]),
-            ({"time": np.datetime64("2023-07-28")}, [8, 11]),
-            ({"production_date": np.datetime64("2024-09-13")}, [10]),
-            ({"spatial_resolution": 0.5}, [10]),
-            ({"temporal_resolution": "PT12H"}, [9]),
+            ({"version": "202411"}, [13]),
+            ({"time": np.datetime64("2023-07-28")}, [10, 13]),
+            ({"production_date": np.datetime64("2024-09-13")}, [12]),
+            ({"spatial_resolution": 0.5}, [12]),
+            ({"temporal_resolution": "PT12H"}, [11]),
         ],
     )
     def test_list_layout_cmems(

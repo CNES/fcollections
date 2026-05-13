@@ -57,6 +57,10 @@ The following examples can be used to build complex queries
     ```python
     fc.query(phase='CALVAL')
     ```
+  - Reproc/Forward temporality (only for version 3)
+    ```python
+    fc.query(temporality='REPROC', version='3.0')
+    ```
 :::
 :::{tab-item} Periods
   - A time stamp
