@@ -950,6 +950,26 @@ class FilesDatabase(metaclass=FilesDatabaseMeta):
                 [], edited_filters
             )
             self._remove_unknown_layout_filters(edited_filters)
+
+            # Some filters may be lower in the layout hierarchy. They can't be
+            # applied easily, so we choose to remove them. The only identified
+            # case for now is for the L2_LR_SSH (<version>/<subset> layout) when
+            # requesting the 'version' field: 'subset' is mandatory and will be
+            # ignored.
+            all_filters = functools.reduce(
+                lambda x, y: x | y, map(lambda layout: layout.names, selected_layouts)
+            )
+            lower_in_hierarchy_filters = set(edited_filters) - all_filters
+            logger.debug(
+                "Filters %s are after the requested field name in the layout hierarchy, they will not be applied",
+                lower_in_hierarchy_filters,
+            )
+            edited_filters = {
+                k: v
+                for k, v in edited_filters.items()
+                if k not in lower_in_hierarchy_filters
+            }
+
             return {x[0] for x in metadata_collector.discover(**edited_filters)}
         except LayoutMismatchError:
             msg = (

@@ -796,3 +796,10 @@ class TestHalfOrbitMixin:
     def test_cycle_range_layout(self, l2_lr_ssh_dir_empty_files_layout: Path):
         db = NetcdfFilesDatabaseSwotLRL2(l2_lr_ssh_dir_empty_files_layout)
         assert db.cycle_range(subset="Expert") == (6, 577)
+
+
+def test_filter_values(l2_lr_ssh_dir_empty_files_layout: Path):
+    db = NetcdfFilesDatabaseSwotLRL2(l2_lr_ssh_dir_empty_files_layout)
+    expected_versions = {"PIA2", "PID0", "PGC0", "PIC2", "PIB0"}
+    actual_versions = {str(v) for v in db.filter_values("version", subset="Expert")}
+    assert actual_versions == expected_versions
