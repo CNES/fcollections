@@ -1,7 +1,7 @@
 Release notes
 =============
 
-2.0.0 (2026-05-XX)
+2.0.0 (2026-06-19)
 ------------------
 
 Important
@@ -68,6 +68,7 @@ homogeneous dataset, an error will be raised.
 Details
 .......
 
+- fix: filter_values for version field of L2_LR_SSH `PR#10 <https://github.com/CNES/fcollections/pull/10>`_
 - feat: allow folder-specific filters `PR#9 <https://github.com/CNES/fcollections/pull/9>`_
 - chore: migration to pyinterp 2026.4.0 `PR#8 <https://github.com/CNES/fcollections/pull/8>`_
 - Half orbit mixin `PR#7 <https://github.com/CNES/fcollections/pull/7>`_
