@@ -66,23 +66,41 @@ def gshhg_tar_gz() -> bytes:
 def test_gshhg(gshhg_tar_gz: bytes, tmp_path_factory: pytest.TempPathFactory):
     path = tmp_path_factory.mktemp("sad")
 
-    def retrbinary_side_effect(_, callback):
-        callback(gshhg_tar_gz)
+    buf = io.BytesIO()
+    with tarfile.open(fileobj=buf, mode="w") as tar:
+        data = b"Hello World"
+        info = tarfile.TarInfo(name="binned_border_i.nc")
+        info.size = len(data)
+        tar.addfile(info, io.BytesIO(data))
 
-    ftp_mock = Mock()
-    ftp_mock.retrbinary.side_effect = retrbinary_side_effect
+    mock_resp = Mock()
+    mock_resp.content = buf.getvalue()
+    mock_resp.raise_for_status.return_value = None
 
     aux = GSHHG()
     with (
-        patch("fcollections.sad._gshhg.FTP", return_value=ftp_mock),
+        patch("requests.get", return_value=mock_resp) as get,
         patch("fcollections.sad.GSHHG.lookup_folders", return_value=[path]),
     ):
         fetched_file = aux["border_i"]
-        with open(fetched_file, "rb") as f:
-            assert f.read() == b"hello"
 
-        fetched_file = aux["GSHHS_h"]
-        with open(fetched_file, "rb") as f:
-            assert f.read() == b"world"
+    with open(fetched_file) as f:
+        assert f.read() == "Hello World"
 
-    ftp_mock.retrbinary.assert_called_once()
+    get.assert_called_once_with(
+        aux.HTTP_URL + "/gshhg/gshhg-gmt-2.3.7.tar.gz", timeout=60
+    )
+
+
+def test_gshhg_http_error(tmp_path_factory: pytest.TempPathFactory):
+    path = tmp_path_factory.mktemp("sad")
+    mock_resp = Mock()
+    mock_resp.raise_for_status.side_effect = requests.HTTPError("404")
+
+    aux = GSHHG()
+    with (
+        patch("fcollections.sad._gshhg.requests.get", return_value=mock_resp),
+        patch("fcollections.sad.GSHHG.lookup_folders", return_value=[path]),
+    ):
+        with pytest.raises(RuntimeError):
+            aux["border_i"]
