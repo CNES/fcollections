@@ -1,7 +1,90 @@
 Release notes
 =============
 
-1.0.0 (2025-02-04)
+2.0.0 (2026-06-19)
+------------------
+
+Important
+.........
+
+The project has been moved to the `CNES <https://github.com/CNES/fcollections>`_
+Github repository.
+
+A new method ``filter_values`` is available for all ``NetcdfFilesDatabase``
+implementations. This method helps extracting the possible values of a query's
+filter. It is fast when scanning the folders (layouts must be enabled), but
+slower when scanning the files is necessary (a ``PerformanceWarning`` is issued
+in that case).
+
+.. code:: python
+
+  >> from fcollections.implementations import NetcdfFilesDatabaseGriddedSLA
+  >> fc = NetcdfFilesDatabaseGriddedSLA(...)
+  >> fc.filter_values('version')
+  {'0_3', '1_0', '2_0_1', '3_0'}
+
+The following dependencies have new constraints:
+  - Pandas: ``>=3``
+  - Pyinterp: ``>=2026.4.0``
+
+Folder-specific filters can now be given to filter a query. This new behavior
+breaks the assumption that all layouts share the same filters, which has the
+following consequences:
+
+- Setting a folder-specific filter that is present in one layout, with an
+  underconstrained query will raise  a ``LayoutMismatchError``. Adding more
+  filters to constrain the scan to the part of the file system matching the
+  layout will fix the query.
+
+  .. code:: python
+
+    from fcollections.implementations import NetcdfFilesDatabaseSwotLRL3
+    fc = NetcdfFilesDatabaseSwotLRL3(...)
+
+    # Will raise an error, the scan will explore v1 and v2 which have no concept
+    # of 'temporality'
+    fc.query(temporality='REPROC')
+
+    # Add constraint to fix the query
+    fc.query(temporality='REPROC', version='3.0')
+
+- Folder-specific filters with the layouts disabled will be ignored, and a
+  ``UserWarning`` will be emitted
+
+Breaking Changes
+................
+
+The ``IPredicate`` interface has been refactored into the more explicit
+``IFilterBuilder`` interface. This interface handles both complex predicates and
+filters' converter through the ``build_predicate`` and ``build_filter`` methods.
+
+Previously, if a file did not match the file name convention, it was ignored. It
+now raises a ``LayoutMismatchError``.
+
+``PeriodMixin`` now expects to work on a single homogeneous subset of data. In
+case the filters given to the methods are not sufficient to extract an
+homogeneous dataset, an error will be raised.
+
+Details
+.......
+
+- perf: switch to HTTP request for GSHHG SAD `PR#12 <https://github.com/CNES/fcollections/pull/12>`_
+- fix: filter_values for version field of L2_LR_SSH `PR#10 <https://github.com/CNES/fcollections/pull/10>`_
+- feat: allow folder-specific filters `PR#9 <https://github.com/CNES/fcollections/pull/9>`_
+- chore: migration to pyinterp 2026.4.0 `PR#8 <https://github.com/CNES/fcollections/pull/8>`_
+- Half orbit mixin `PR#7 <https://github.com/CNES/fcollections/pull/7>`_
+- perf: subset unmixing prior to listing `PR#6 <https://github.com/CNES/fcollections/pull/6>`_
+- feat!: Add phase filter argument `PR#5 <https://github.com/CNES/fcollections/pull/5>`_
+- feat!: filter values from Layout folders `PR#4 <https://github.com/CNES/fcollections/pull/4>`_
+- refactor: adapt code to work with pandas `PR#1 <https://github.com/CNES/fcollections/pull/1>`_
+
+Contributors
+............
+
+- Robin Chevrier
+- Anne-Sophie Tonneau
+
+1.0.0 (2026-02-04)
 ------------------
 
 A bit of refactoring has been done in this version to improve the maintainability
