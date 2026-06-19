@@ -71,7 +71,7 @@ jobs:
           echo "machine tds-odatis.aviso.altimetry.fr login ${{ secrets.AVISO_USER }} password ${{ secrets.AVISO_PASSWORD }}" > ~/.netrc
       # Cached retrieval of L2_LR_SSH data
       - name: Restore cached sample data for L2_LR_SSH
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         id: restore_samples_l2_lr_ssh
         with:
           path: docs/implementations/data_l2_lr_ssh
@@ -83,14 +83,14 @@ jobs:
           set -e
           python docs/implementations/scripts/pull_data_l2_lr_ssh.py
       - name: Cache L2_LR_SSH data
-        uses: actions/cache/save@v4
+        uses: actions/cache/save@v5
         if: steps.restore_samples_l2_lr_ssh.outputs['cache-hit'] != 'true'
         with:
           path: docs/implementations/data_l2_lr_ssh
           key: samples-${{ hashFiles('docs/implementations/scripts/pull_data_l2_lr_ssh.py') }}
       # Cached retrieval of L3_LR_SSH data
       - name: Restore cached sample data for L3_LR_SSH
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         id: restore_samples_l3_lr_ssh
         with:
           path: docs/implementations/data_l3_lr_ssh
@@ -102,7 +102,7 @@ jobs:
           set -e
           python docs/implementations/scripts/pull_data_l3_lr_ssh.py
       - name: Cache L3_LR_SSH data
-        uses: actions/cache/save@v4
+        uses: actions/cache/save@v5
         if: steps.restore_samples_l3_lr_ssh.outputs['cache-hit'] != 'true'
         with:
           path: docs/implementations/data_l3_lr_ssh
