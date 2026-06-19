@@ -5,7 +5,8 @@ import itertools
 import logging
 import tarfile
 import typing as tp
-from ftplib import FTP
+
+import requests
 
 from ._interface import IAuxiliaryDataFetcher
 
@@ -33,7 +34,7 @@ class GSHHG(IAuxiliaryDataFetcher):
         the user home (~/.config/sad)
     """
 
-    FTP_URL = "ftp.soest.hawaii.edu"
+    HTTP_URL = "http://www.soest.hawaii.edu/pwessel"
     FILE = "gshhg/gshhg-gmt-2.3.7.tar.gz"
 
     @property
@@ -43,25 +44,24 @@ class GSHHG(IAuxiliaryDataFetcher):
         return {f"{s}_{r}" for s, r in itertools.product(subset, resolutions)}
 
     def _download(self, remote_file: str, target_folder: Path):
-        fetch_ftp_file(self.FTP_URL, self.FILE, target_folder)
+        fetch_http_file(self.HTTP_URL, self.FILE, target_folder)
         return target_folder / remote_file
 
     def _file_name(self, key: str):
         return f"binned_{key}.nc"
 
 
-def fetch_ftp_file(url: str, filename: str, target_folder: Path):
+def fetch_http_file(url: str, filename: str, target_folder: Path):
 
-    logger.debug("Connecting as anonymous to %s", url)
-    ftp = FTP(url)
-    ftp.login()
+    full_url = url + "/" + filename
 
-    # Download in-memory. This should be limited to a few MB
-    logger.info("Downloading %s...", filename)
+    logger.info("Downloading %s...", full_url)
     tar_data = io.BytesIO()
-    ftp.retrbinary(f"RETR {filename}", tar_data.write)
-    ftp.quit()
-    logger.info("Downloading %s... Done", filename)
+    response = requests.get(full_url, timeout=60)
+    try:
+        response.raise_for_status()
+    except requests.exceptions.RequestException as e:
+        raise RuntimeError(f"Failed to download file from {full_url}") from e
 
     # Filter out non-netcdf and flatten the tar gz structure
     def tar_info_filter(tar_info: tarfile.TarInfo, _) -> tarfile.TarInfo | None:
@@ -69,12 +69,15 @@ def fetch_ftp_file(url: str, filename: str, target_folder: Path):
             logger.debug("Not an netcdf, skipping extraction")
             return None
 
-        tar_info.name = tar_info.name.split("/")[-1]
+        logger.debug("Extracting %s", tar_info.name)
+        tar_info.path = tar_info.path.split("/")[-1]
         return tar_info
 
     # Extract in-memory buffer
+    tar_data.write(response.content)
     tar_data.seek(0)
     with tarfile.open(fileobj=tar_data, mode="r") as tar:
         for member in tar.getmembers():
-            logger.debug("Extracting %s", member.name)
             tar.extract(member, path=target_folder, filter=tar_info_filter)
+
+    logger.info("Downloading %s... Done", full_url)
